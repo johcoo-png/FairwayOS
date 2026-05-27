@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -l files.zip)",
+      "Bash(copy \"C:\\\\Users\\\\coope\\\\OneDrive - Umich\\\\Golf app\\\\fairwayos_v8_auth.html\" \"C:\\\\Users\\\\coope\\\\OneDrive - Umich\\\\Golf app\\\\index.html\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\coope\\\\OneDrive - Umich\\\\Golf app\\\\fairwayos_v8_auth.html\" \"C:\\\\Users\\\\coope\\\\OneDrive - Umich\\\\Golf app\\\\index.html\")",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)"
+    ]
+  }
+}
