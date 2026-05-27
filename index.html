@@ -843,36 +843,30 @@ function showAuthScreen(){
 function showMainApp(){
   document.getElementById('authOverlay').classList.add('hidden');
   document.querySelector('.shell').classList.add('authenticated');
+  // Update course badge in topbar
   if(currentCourse){
     const badge = document.getElementById('courseBadge');
     if(badge) badge.textContent = currentCourse.name;
   }
+  // Initialize the v6 app now that DOM is visible (only once per session)
   if(!window.__fairwayInitialized && typeof window.__fairwayInit === 'function'){
     window.__fairwayInitialized = true;
-    requestAnimationFrame(async () => {
-      try { await supabaseLoad(); } catch(e){ console.error('Supabase load error:', e); }
-      try { window.__fairwayInit(); } catch(e){ console.error('App init error:', e); }
+    // Use requestAnimationFrame to ensure layout is ready before initializing
+    requestAnimationFrame(() => {
+      try { window.__fairwayInit(); }
+      catch(e){ console.error('App init error:', e); }
     });
   }
 }
 
 async function loadUserCourse(user){
   currentUser = user;
-  const { data: rows, error } = await sb.from('courses').select('*').eq('owner_id', user.id);
-  if(!error && rows?.length){
-    currentCourse = rows[0];
+  const { data, error } = await sb.from('courses').select('*').eq('owner_id', user.id).single();
+  if(error){
+    console.error('Load course error:', error);
+    currentCourse = { name: 'My Course', id: null };
   } else {
-    // No course found — create one automatically
-    const name = user.user_metadata?.course_name || 'My Course';
-    const { data: created, error: insErr } = await sb.from('courses')
-      .insert([{ name, owner_id: user.id }])
-      .select().single();
-    if(insErr){
-      console.error('Create course error:', insErr);
-      currentCourse = { name, id: null };
-    } else {
-      currentCourse = created;
-    }
+    currentCourse = data;
   }
 }
 
@@ -993,103 +987,6 @@ if(document.readyState === 'loading'){
 window.handleLogout = handleLogout;
 
 /* ═══════════════════════════════════════════════════════════════════
-   SUPABASE DATA LAYER — cloud persistence per account
-   Each array in DATA maps to a dedicated Supabase table.
-   Tables are expected to have: id (uuid PK), course_id (uuid FK),
-   plus snake_case columns matching the DATA property names.
-   Special: "desc" stored as "description" (SQL reserved word).
-   ═══════════════════════════════════════════════════════════════════ */
-
-function _cs(s){ return s.replace(/[A-Z]/g, l => '_' + l.toLowerCase()); }
-function _sc(s){ return s.replace(/_([a-z])/g, (_, l) => l.toUpperCase()); }
-
-function _toRow(obj, cid){
-  const row = { course_id: cid };
-  for(const [k, v] of Object.entries(obj)){
-    if(k === 'id') continue; // Let Supabase generate UUID
-    const col = k === 'desc' ? 'description' : _cs(k);
-    row[col] = v;
-  }
-  return row;
-}
-
-function _fromRow(row){
-  const obj = {};
-  for(const [k, v] of Object.entries(row)){
-    if(k === 'course_id' || k === 'id') continue;
-    obj[k === 'description' ? 'desc' : _sc(k)] = v;
-  }
-  return obj;
-}
-
-const SB_TABLES = [
-  ['routine_tasks',   'routine'],
-  ['jobs',            'jobs'],
-  ['projects',        'projects'],
-  ['tasks',           'calEvents'],
-  ['moisture_readings','moisture'],
-  ['hand_water_log',  'handWaterLog'],
-  ['irrigation_log',  'irrLog'],
-  ['scout_log',       'scoutLog'],
-  ['green_speeds',    'greenSpeeds'],
-  ['equipment',       'equipment'],
-  ['work_orders',     'workOrders'],
-  ['parts',           'parts'],
-  ['service_history', 'serviceHistory'],
-  ['spray_log',       'sprayLog'],
-  ['fertilizer_log',  'fertLog'],
-  ['upcoming_sprays', 'upcomingSprays'],
-];
-
-async function supabaseLoad(){
-  const cid = currentCourse?.id;
-  if(!cid) return;
-
-  const results = await Promise.allSettled(
-    SB_TABLES.map(([tbl]) => sb.from(tbl).select('*').eq('course_id', cid))
-  );
-
-  results.forEach(({ status, value }, i) => {
-    if(status === 'fulfilled' && value.data != null){
-      DATA[SB_TABLES[i][1]] = value.data.map(_fromRow);
-    }
-  });
-
-  // Crew members stored as flat name list
-  const { data: crewRows } = await sb.from('crew_members').select('name').eq('course_id', cid).order('name');
-  if(crewRows?.length) DATA.crew = crewRows.map(r => r.name);
-
-  if(currentCourse.name) DATA.courseName = currentCourse.name;
-}
-
-let _syncTimer = null;
-
-function sbSave(){
-  clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(() => _doSync().catch(e => console.error('Supabase sync error:', e)), 1500);
-}
-
-async function _doSync(){
-  const cid = currentCourse?.id;
-  if(!cid) return;
-
-  await Promise.allSettled(SB_TABLES.map(async ([tbl, key]) => {
-    await sb.from(tbl).delete().eq('course_id', cid);
-    if(DATA[key]?.length){
-      const { error } = await sb.from(tbl).insert(DATA[key].map(it => _toRow(it, cid)));
-      if(error) console.error(`Sync error [${tbl}]:`, error.message);
-    }
-  }));
-
-  // Sync crew members
-  await sb.from('crew_members').delete().eq('course_id', cid);
-  if(DATA.crew?.length){
-    const { error } = await sb.from('crew_members').insert(DATA.crew.map(name => ({ course_id: cid, name })));
-    if(error) console.error('Sync error [crew_members]:', error.message);
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
    FAIRWAYOS v6 — APPLICATION LOGIC
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -1104,32 +1001,135 @@ let activeSection = 'today';
 let activeSub = 'overview';
 let selectedHoles = new Set([1]); // Multi-select state
 
-// All data starts empty — populated from Supabase per account after login
+// Demo data (hardcoded per staging plan — will wipe at Supabase migration)
 const DATA = {
-  courseName: 'My Course',
-  zipCode: '',
+  courseName: 'Polo Fields CC',
+  zipCode: '48170',
   timeFormat: '12h',
   crewStartTime: '06:00',
-
-  crew: [],
+  
+  crew: ['Mike T.','Carlos R.','Jake S.','Dana W.','Tom K.','Bob M.','Sarah P.'],
   areas: ['Greens','Fairways','Rough','1st Cut','Range','Tees','Bunkers','Collars/Approach'],
-
-  routine:        [],
-  jobs:           [],
-  projects:       [],
-  calEvents:      [],
-  moisture:       [],
-  handWaterLog:   [],
-  irrLog:         [],
-  scoutLog:       [],
-  greenSpeeds:    [],
-  equipment:      [],
-  workOrders:     [],
-  parts:          [],
-  serviceHistory: [],
-  sprayLog:       [],
-  fertLog:        [],
-  upcomingSprays: []
+  
+  routine: [
+    {id:0,title:'Check weather & ET',desc:'Review dew point, wind, rain forecast.',done:true,doneTime:'5:47am'},
+    {id:1,title:'Fill out job board',desc:'Assign crew to mowing, spraying, hand-watering.',done:false,current:true},
+    {id:2,title:'Review priority projects',desc:'2 urgent: sprinkler hole 11, Triplex #2 reel.',done:false,current:true,urgentCount:2},
+    {id:3,title:'Run irrigation agent',desc:'Confirm AI zone recs before 7am start.',done:false},
+    {id:4,title:'Log green speeds & moisture',desc:'Enter stimpmeter and 18-hole moisture scan.',done:false}
+  ],
+  
+  jobs: [
+    {crew:'Mike T.',task:'Mow greens — all 18',area:'Greens',dir:'↔ L→R',time:'2 hr',status:'In progress',equipment:'Triplex Mower #2'},
+    {crew:'Carlos R.',task:'Change cups + pins',area:'Greens',dir:'—',time:'1.5 hr',status:'In progress',equipment:''},
+    {crew:'Jake S.',task:'Hand water greens 8 & 14',area:'Greens',dir:'—',time:'45 min',status:'Pending',equipment:''},
+    {crew:'Dana W.',task:'Mow fairways — front 9',area:'Fairways',dir:'↔ E/W',time:'2.5 hr',status:'In progress',equipment:'Fairway Mower #1'},
+    {crew:'Tom K.',task:'Rake bunkers — all',area:'Bunkers',dir:'—',time:'1.5 hr',status:'Done',equipment:''},
+    {crew:'— Unassigned',task:'Mow rough — back 9',area:'Rough',dir:'↕ N/S',time:'3 hr',status:'Pending',equipment:'Rough Mower #1'}
+  ],
+  
+  projects: [
+    {title:'Broken sprinkler head — Hole 11',desc:"Irrigation head broken. Fairway 11 zone offline. Fix before tonight's cycle.",priority:'urgent',category:'irrigation',progress:65,due:'2026-04-11',assigned:'Unassigned',status:'in_progress',completed:false},
+    {title:'Triplex Mower #2 — reel service',desc:'Reel service due at 40 hrs. Currently at 38.2 hrs. Service before next use.',priority:'high',category:'equipment',progress:30,due:'2026-04-13',assigned:'Bob M.',status:'in_progress',completed:false},
+    {title:'Topdress — greens cycle 3',desc:'Auto-scheduled Apr 18. Full crew, 6hr operation. Sand delivery confirmed Apr 16.',priority:'low',category:'turf',progress:0,due:'2026-04-18',assigned:'Full crew',status:'planned',completed:false},
+    {title:'Aerification — front nine greens',desc:'Planned Apr 15. Notify pro shop & membership by Apr 10.',priority:'low',category:'turf',progress:0,due:'2026-04-15',assigned:'TBD',status:'planned',completed:false},
+    {title:'Member-Guest tournament prep',desc:'Saturday event. Firm greens, tight pins, no overseed mid-week.',priority:'high',category:'event',progress:45,due:'2026-04-20',assigned:'Cooper',status:'in_progress',completed:false}
+  ],
+  
+  calEvents: [
+    {date:'2026-04-17',title:'Greens mow — all 18',time:'5:30',cat:'turf'},
+    {date:'2026-04-17',title:'Irrigation agent review',time:'6:00',cat:'irrigation'},
+    {date:'2026-04-18',title:'Topdress — greens cycle 3',time:'5:00',cat:'turf'},
+    {date:'2026-04-19',title:'Aerification — front nine',time:'5:00',cat:'turf'},
+    {date:'2026-04-20',title:'Member-Guest tournament',time:'8:00',cat:'tournament'},
+    {date:'2026-04-22',title:'Greens committee meeting',time:'14:00',cat:'event'},
+    {date:'2026-04-24',title:'Corporate outing — 72 golfers',time:'9:00',cat:'outing'},
+    {date:'2026-04-25',title:'Fertilizer application — greens',time:'6:00',cat:'chemical'}
+  ],
+  
+  // 5-spot moisture data — front/middle/back/left/right
+  moisture: [
+    {hole:1,spots:{front:25,middle:24,back:26,left:23,right:24},ts:'Apr 17 · 6:02am',notes:''},
+    {hole:2,spots:{front:26,middle:25,back:25,left:24,right:25},ts:'Apr 17 · 6:03am',notes:''},
+    {hole:3,spots:{front:24,middle:23,back:25,left:22,right:24},ts:'Apr 17 · 6:04am',notes:''},
+    {hole:7,spots:{front:17,middle:22,back:24,left:20,right:23},ts:'Apr 17 · 6:08am',notes:'Dollar spot area, front drying fast'},
+    {hole:8,spots:{front:18,middle:22,back:24,left:19,right:22},ts:'Apr 17 · 6:10am',notes:'Recurring dry spot NW corner'},
+    {hole:14,spots:{front:20,middle:21,back:23,left:19,right:21},ts:'Apr 17 · 6:14am',notes:'Wind exposure'}
+  ],
+  
+  handWaterLog: [
+    {date:'Apr 16',hole:'Green 8',dur:'12 min',crew:'Jake S.',notes:'ET deficit — dry spot NW corner'},
+    {date:'Apr 15',hole:'Green 8',dur:'10 min',crew:'Jake S.',notes:'Recurring dry area'},
+    {date:'Apr 15',hole:'Green 14',dur:'8 min',crew:'Mike T.',notes:'Wind exposure — drying fast'}
+  ],
+  
+  irrLog: [
+    {date:'Apr 16',zone:'Greens 6–7',sched:'12 min',actual:'0 min',reason:'Rain forecast — held'},
+    {date:'Apr 15',zone:'All greens',sched:'12 min',actual:'12 min',reason:'Normal'},
+    {date:'Apr 15',zone:'Fairways 1-10',sched:'18 min',actual:'22 min',reason:'Dry conditions, extended'}
+  ],
+  
+  scoutLog: [
+    {date:'Apr 17',hole:'Green 7',holes:[7],category:'disease',issue:'Dollar spot',sev:'Moderate',action:'Spray',status:'Open',notes:'Dew point 58°F+ — spray window Friday morning'},
+    {date:'Apr 16',hole:'Fairway 11',holes:[11],category:'irrigation',issue:'Irrigation head broken',sev:'Urgent',action:'Create WO',status:'Open',notes:'Water pooling — WO created'},
+    {date:'Apr 15',hole:'Green 14',holes:[14],category:'damage',issue:'Dry spot',sev:'Low',action:'Hand water',status:'Monitoring',notes:'Wind exposure — hand water daily'}
+  ],
+  
+  greenSpeeds: [
+    {date:'Apr 17',val:10.2,holes:'All 18',note:'Post-roll, pre-event'},
+    {date:'Apr 16',val:9.8,holes:'All 18',note:'Normal day'},
+    {date:'Apr 14',val:9.6,holes:'Greens 1,3,5,7',note:'Spot check'},
+    {date:'Mar 28',val:9.5,holes:'All 18',note:'Post aerification'}
+  ],
+  
+  equipment: [
+    {id:'eq1',nickname:'Triplex Mower #2',brand:'Toro',model:'Greensmaster 3150-Q',year:2022,serial:'TGM-3150-22045',hours:38.2,hoursMonth:38.2,status:'active',alert:'Service due at 40hrs',alertType:'amber',nextService:'Oil change in 1.8hrs',lastUsed:'Today · mowed greens',purchaseDate:'2022-03-15',purchasePrice:12500,services:[{name:'Oil change',interval:50,lastAt:0},{name:'Reel sharpening',interval:400,lastAt:100},{name:'Bedknife replacement',interval:800,lastAt:0}]},
+    {id:'eq2',nickname:'Fairway Mower #1',brand:'Toro',model:'Reelmaster 5510',year:2021,serial:'TRM-5510-21099',hours:198,hoursMonth:22.1,status:'active',alert:'Running normally',alertType:'green',nextService:'Belt inspection in 2hrs',lastUsed:'Today · mowed fairways',services:[{name:'Oil change',interval:100,lastAt:100},{name:'Belt inspection',interval:200,lastAt:0}]},
+    {id:'eq3',nickname:'Spray Rig #1',brand:'Toro',model:'Multi Pro 5800',year:2023,serial:'TMP-5800-23012',hours:15.4,hoursMonth:15.4,status:'active',alert:'Running normally',alertType:'green',nextService:'Calibration in 30hrs',lastUsed:'Apr 14 · fungicide app',services:[{name:'Calibration',interval:50,lastAt:20}]},
+    {id:'eq4',nickname:'Rough Mower #1',brand:'Toro',model:'Groundsmaster 4700',year:2020,serial:'TGR-4700-20078',hours:31,hoursMonth:31,status:'active',alert:'Running normally',alertType:'green',nextService:'Oil change in 19hrs',lastUsed:'Yesterday · mowed rough',services:[{name:'Oil change',interval:50,lastAt:31}]},
+    {id:'eq5',nickname:'Utility Vehicle #3',brand:'Club Car',model:'Carryall 550',year:2024,serial:'CC-550-24034',hours:8.5,hoursMonth:8.5,status:'active',alert:'Running normally',alertType:'green',nextService:'Service in 42hrs',lastUsed:'Today · crew transport',services:[]},
+    {id:'eq6',nickname:'Topdresser #1',brand:'Turfco',model:'XT5',year:2019,serial:'TC-XT5-19021',hours:2,hoursMonth:2,status:'active',alert:'Running normally',alertType:'green',nextService:'Inspection in 8hrs',lastUsed:'Mar 20 · last topdress',services:[]}
+  ],
+  
+  workOrders: [
+    {id:'wo1',machine:'Triplex Mower #2',issue:'Reel service at 40hrs',priority:'High',assigned:'Bob M.',status:'in_progress',created:'Apr 14',parts:['TOR-88-2012'],expectedHrs:2},
+    {id:'wo2',machine:'Irrigation H-11',issue:'Broken head — hole 11',priority:'Urgent',assigned:'Unassigned',status:'open',created:'Apr 16',parts:[],expectedHrs:1},
+    {id:'wo3',machine:'Fairway Mower #1',issue:'Belt inspection + tension',priority:'Low',assigned:'Bob M.',status:'assigned',created:'Apr 17',parts:['GEN-BELT-51'],expectedHrs:0.5},
+    {id:'wo4',machine:'Spray Rig #1',issue:'Nozzle calibration',priority:'Medium',assigned:'Bob M.',status:'awaiting_parts',created:'Apr 12',parts:['TOR-SPRAY-NOZZLE-3'],expectedHrs:1.5},
+    {id:'wo5',machine:'Utility Vehicle #3',issue:'Headlight bulb out',priority:'Low',assigned:'Bob M.',status:'complete',created:'Apr 10',parts:['UTV-BULB-12V'],expectedHrs:0.25}
+  ],
+  
+  parts: [
+    {pn:'TOR-125-3451',name:'Reel bearing',mfr:'Toro',compat:['eq1'],onHand:4,reorderAt:2,cost:42.50,lastUsed:'Mar 15',tracked:true,status:'ok'},
+    {pn:'TOR-88-2012',name:'Bedknife — Triplex',mfr:'Toro',compat:['eq1'],onHand:0,reorderAt:1,cost:95.00,lastUsed:'Feb 10',tracked:true,status:'out'},
+    {pn:'HON-0789',name:'Oil filter — Honda engines',mfr:'Honda',compat:['eq3','eq5'],onHand:3,reorderAt:5,cost:12.99,lastUsed:'Catalog only',tracked:true,status:'low'},
+    {pn:'GEN-BELT-51',name:'V-belt 51"',mfr:'Gates',compat:['eq2'],onHand:1,reorderAt:2,cost:28.00,lastUsed:'Mar 22',tracked:true,status:'low'},
+    {pn:'TOR-OIL-10W30',name:'Hydraulic oil 10W-30 (1gal)',mfr:'Toro',compat:['eq1','eq2','eq4'],onHand:8,reorderAt:3,cost:18.50,lastUsed:'Apr 10',tracked:true,status:'ok'},
+    {pn:'TOR-SPRAY-NOZZLE-3',name:'Spray nozzle TP8004',mfr:'TeeJet',compat:['eq3'],onHand:0,reorderAt:4,cost:6.75,lastUsed:'Catalog',tracked:true,status:'ordered'},
+    {pn:'UTV-BULB-12V',name:'Halogen bulb 12V H7',mfr:'Generic',compat:['eq5'],onHand:0,reorderAt:0,cost:4.50,lastUsed:'Apr 10',tracked:false,status:'catalog'}
+  ],
+  
+  serviceHistory: [
+    {date:'Apr 10',machine:'Fairway Mower #1',service:'Oil change',hours:'198',parts:'1 oil filter, 4qt 10W-30',cost:'$48.50',tech:'Bob M.',source:'Scheduled'},
+    {date:'Mar 15',machine:'Triplex Mower #2',service:'Reel sharpening',hours:'22.0',parts:'Grinding wheel (labor)',cost:'$120.00',tech:'Bob M.',source:'WO #19'},
+    {date:'Feb 28',machine:'Triplex Mower #2',service:'Oil change + filter',hours:'18.5',parts:'1 oil filter, 3qt oil',cost:'$42.00',tech:'Bob M.',source:'Scheduled'},
+    {date:'Feb 10',machine:'Triplex Mower #2',service:'Bedknife replacement',hours:'15.2',parts:'1 bedknife',cost:'$95.00',tech:'Bob M.',source:'Ad-hoc'},
+    {date:'Jan 22',machine:'Triplex Mower #2',service:'Full seasonal inspection',hours:'0',parts:'Various (reel assembly check)',cost:'$180.00',tech:'Bob M.',source:'Scheduled'}
+  ],
+  
+  sprayLog: [
+    {date:'Apr 10',area:'All greens',product:'Primo Maxx',rate:'0.2 oz/1000',tech:'Carlos R.',notes:'Growth regulator — pre-tournament'},
+    {date:'Apr 5',area:'Greens 5,7,14',product:'Daconil Action',rate:'3.6 fl oz/1000',tech:'Carlos R.',notes:'Dollar spot preventive'}
+  ],
+  
+  fertLog: [
+    {date:'Apr 8',area:'All greens',product:'Nature Safe 8-3-5',rate:'0.5 lb N/1000',tech:'Mike T.',notes:'Early spring feeding'},
+    {date:'Mar 25',area:'Fairways',product:'Lesco 18-3-18',rate:'0.75 lb N/1000',tech:'Carlos R.',notes:'Spring greenup'}
+  ],
+  
+  upcomingSprays: [
+    {product:'Primo Maxx + Daconil Action',area:'All greens',date:'Tue Apr 22',time:'6:00am'}
+  ]
 };
 
 // Category color mapping
@@ -1681,8 +1681,7 @@ const FORECAST_DATA = {
 };
 function initForecastChart(){
   drawForecastChart();
-  const axis = document.getElementById('fc-hours-axis');
-  if(axis) axis.innerHTML = ['6a','8a','10a','12p','2p','4p','6p','8p','10p','12a','2a','4a'].map(h=>`<span>${h}</span>`).join('');
+  document.getElementById('fc-hours-axis').innerHTML = ['6a','8a','10a','12p','2p','4p','6p','8p','10p','12a','2a','4a'].map(h=>`<span>${h}</span>`).join('');
 }
 function setForecastMetric(m, btn){
   forecastMetric = m;
@@ -1844,6 +1843,7 @@ function saveRoutineItem(){
     }
     showToast('Routine item added');
   }
+  lsSave();
   closeModal('routine-modal');
 }
 
@@ -3205,7 +3205,7 @@ function openMoistureDetail(hole){
         ${['front','middle','back','left','right'].map(k=>`
           <div style="background:var(--bg-field);padding:8px 4px;border-radius:6px;">
             <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;">${k}</div>
-            <div style="font-size:14px;font-weight:700;margin-top:2px;color:${m.spots[k]<22?'var(--red-600)':'var(--text-primary)'};">${m.spots[k]}%</div>
+            <div style="font-size:14px;font-weight:700;margin-top:2px;color:${m.spots[k]==null?'var(--text-muted)':m.spots[k]<22?'var(--red-600)':'var(--text-primary)'};">${m.spots[k]!=null?m.spots[k]+'%':'—'}</div>
           </div>
         `).join('')}
       </div>
@@ -3618,7 +3618,7 @@ function renderMoisture(){
             return `
               <div class="moist-entry-row" onclick="openMoistureDetail(${m.hole})" style="cursor:pointer;">
                 <div class="moist-entry-hole">Green ${m.hole}</div>
-                ${['front','middle','back','left','right'].map(k=>`<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;font-weight:700;color:${m.spots[k]<22?'var(--red-600)':m.spots[k]<28?'var(--green-700)':'var(--blue-600)'};">${m.spots[k]}%</div>`).join('')}
+                ${['front','middle','back','left','right'].map(k=>{const v=m.spots[k];return `<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;font-weight:700;color:${v==null?'var(--text-muted)':v<22?'var(--red-600)':v<28?'var(--green-700)':'var(--blue-600)'};">${v!=null?v+'%':'—'}</div>`;}).join('')}
                 <div style="display:flex;gap:4px;">
                   <button class="row-icon-btn" onclick="event.stopPropagation();showToast('Edit — demo')">✏</button>
                   <button class="row-icon-btn row-del" onclick="event.stopPropagation();showToast('Delete — demo')">×</button>
@@ -3638,26 +3638,59 @@ function openMoistureEntry(){
   <div class="modal-overlay open" id="moist-modal">
     <div class="modal-box wide">
       <div class="modal-title">+ Log moisture reading</div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Enter readings for selected hole — all 5 spots optional. Tab between fields, Enter to save.</div>
-      <div class="modal-field"><label>Select hole(s)</label>
-        <div class="scout-multi-hole-row" style="margin-top:6px;">
-          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn" onclick="this.classList.toggle('selected')">${i+1}</button>`).join('')}
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Type a hole number and Tab through all 5 spots. Or use multi-select for bulk entry.</div>
+      <div class="modal-row" style="align-items:flex-end;margin-bottom:12px;">
+        <div class="modal-field" style="max-width:90px;margin:0;">
+          <label>Hole #</label>
+          <input type="number" id="ms-hole" min="1" max="18" placeholder="1–18"
+            oninput="
+              const v=parseInt(this.value);
+              document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'));
+              if(v>=1&&v<=18){
+                const btn=document.querySelectorAll('#moist-modal .tiny-hole-btn')[v-1];
+                if(btn)btn.classList.add('selected');
+              }
+            "
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-front').focus();}">
         </div>
-        <div style="margin-top:6px;display:flex;gap:4px;">
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach(b=>b.classList.add('selected'))">All 18</button>
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach((b,i)=>{if(i<9)b.classList.add('selected');else b.classList.remove('selected')})">Front 9</button>
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach((b,i)=>{if(i>=9)b.classList.add('selected');else b.classList.remove('selected')})">Back 9</button>
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'))">Clear</button>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Front</label>
+          <input type="number" id="ms-front" placeholder="%" min="0" max="100"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-middle').focus();}">
         </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;">
-        <div class="modal-field" style="margin:0;"><label>Front</label><input type="number" id="ms-front" placeholder="%" min="0" max="100"></div>
-        <div class="modal-field" style="margin:0;"><label>Middle</label><input type="number" id="ms-middle" placeholder="%" min="0" max="100"></div>
-        <div class="modal-field" style="margin:0;"><label>Back</label><input type="number" id="ms-back" placeholder="%" min="0" max="100"></div>
-        <div class="modal-field" style="margin:0;"><label>Left</label><input type="number" id="ms-left" placeholder="%" min="0" max="100"></div>
-        <div class="modal-field" style="margin:0;"><label>Right</label><input type="number" id="ms-right" placeholder="%" min="0" max="100"></div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Middle</label>
+          <input type="number" id="ms-middle" placeholder="%" min="0" max="100"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-back').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Back</label>
+          <input type="number" id="ms-back" placeholder="%" min="0" max="100"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-left').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Left</label>
+          <input type="number" id="ms-left" placeholder="%" min="0" max="100"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-right').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Right</label>
+          <input type="number" id="ms-right" placeholder="%" min="0" max="100"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-notes').focus();}">
+        </div>
       </div>
       <div class="modal-field"><label>Notes (optional)</label><input type="text" id="ms-notes" placeholder="e.g. NW corner dry, wind exposure"></div>
+      <div class="modal-field"><label>Multi-select holes (optional)</label>
+        <div class="scout-multi-hole-row" style="margin-top:6px;">
+          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn" onclick="this.classList.toggle('selected');document.getElementById('ms-hole').value='';">${i+1}</button>`).join('')}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:4px;">
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach(b=>b.classList.add('selected'));document.getElementById('ms-hole').value='';">All 18</button>
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach((b,i)=>{if(i<9)b.classList.add('selected');else b.classList.remove('selected')});document.getElementById('ms-hole').value='';">Front 9</button>
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach((b,i)=>{if(i>=9)b.classList.add('selected');else b.classList.remove('selected')});document.getElementById('ms-hole').value='';">Back 9</button>
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'));document.getElementById('ms-hole').value='';">Clear</button>
+        </div>
+      </div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('moist-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
         <button class="btn-green" onclick="saveMoisture()">Save reading</button>
@@ -3665,23 +3698,61 @@ function openMoistureEntry(){
     </div>
   </div>`;
   document.getElementById('modal-container').innerHTML = html;
-  setTimeout(()=>{document.getElementById('ms-front').focus();},50);
+  setTimeout(()=>{document.getElementById('ms-hole').focus();},50);
 }
 function saveMoisture(){
-  const selected = Array.from(document.querySelectorAll('#moist-modal .tiny-hole-btn.selected')).map((b,i)=>parseInt(b.textContent));
+  const selected = Array.from(document.querySelectorAll('#moist-modal .tiny-hole-btn.selected')).map(b=>parseInt(b.textContent));
   if(selected.length === 0) return showToast('Select at least one hole', true);
+  const front  = parseFloat(document.getElementById('ms-front').value)  || null;
+  const middle = parseFloat(document.getElementById('ms-middle').value) || null;
+  const back   = parseFloat(document.getElementById('ms-back').value)   || null;
+  const left   = parseFloat(document.getElementById('ms-left').value)   || null;
+  const right  = parseFloat(document.getElementById('ms-right').value)  || null;
+  const notes  = document.getElementById('ms-notes').value.trim();
+  const now = new Date();
+  const ts = MONTHS_SHORT[now.getMonth()]+' '+now.getDate()+' · '+
+    (DATA.timeFormat==='24h'
+      ? String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')
+      : ((now.getHours()%12)||12)+':'+(String(now.getMinutes()).padStart(2,'0'))+(now.getHours()<12?'am':'pm'));
+  selected.forEach(hole => {
+    const spots = {};
+    if(front  !== null) spots.front  = front;
+    if(middle !== null) spots.middle = middle;
+    if(back   !== null) spots.back   = back;
+    if(left   !== null) spots.left   = left;
+    if(right  !== null) spots.right  = right;
+    const existing = DATA.moisture.findIndex(m => m.hole === hole);
+    const entry = { hole, spots: Object.keys(spots).length ? spots : {front:0,middle:0,back:0,left:0,right:0}, ts, notes };
+    if(existing >= 0) DATA.moisture[existing] = entry;
+    else DATA.moisture.push(entry);
+  });
+  DATA.moisture.sort((a,b) => a.hole - b.hole);
+  lsSave();
   showToast(selected.length+' reading'+(selected.length>1?'s':'')+' saved');
   closeModal('moist-modal');
   document.getElementById('modal-container').innerHTML = '';
+  renderMain();
 }
 
 /* ═══ COURSE → GREEN SPEEDS ═══ */
 function renderGreenSpeeds(){
+  if(!DATA.greenSpeeds || DATA.greenSpeeds.length === 0){
+    return `
+    <div class="card">
+      <div class="card-head"><div class="card-title">Green Speed — Stimpmeter</div><button class="btn-green" onclick="openSpeedEntry()">+ Log reading</button></div>
+      <div class="card-body" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:32px;margin-bottom:10px;">📏</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">No readings yet</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Log your first stimpmeter reading to start tracking green speeds.</div>
+        <button class="btn-green" onclick="openSpeedEntry()">+ Log first reading</button>
+      </div>
+    </div>`;
+  }
   const vals = DATA.greenSpeeds.map(s=>s.val);
   const avg = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
   const seasonAvg = 9.7;
   const maxSpeed = Math.max(...vals);
-  const marker = ((vals[0]-7)/(13-7))*100;
+  const marker = Math.min(Math.max(((vals[0]-7)/(13-7))*100, 0), 100);
   
   return `
   <div class="two-col-eq" style="margin-bottom:14px;">
@@ -3705,11 +3776,32 @@ function renderGreenSpeeds(){
       <div class="card-head"><div class="card-title">Per-hole statistics (last 30 days)</div></div>
       <div class="card-body" style="padding:0;">
         <table class="mow-table">
-          <thead><tr><th>Holes</th><th>Today</th><th>Avg</th><th>Season avg</th></tr></thead>
+          <thead><tr><th>Hole</th><th>Latest</th><th>30-day avg</th><th>Readings</th></tr></thead>
           <tbody>
-            <tr><td>1-6</td><td><strong>10.3</strong></td><td>9.8</td><td>9.7</td></tr>
-            <tr><td>7-12</td><td><strong>10.1</strong></td><td>9.7</td><td>9.6</td></tr>
-            <tr><td>13-18</td><td><strong>10.2</strong></td><td>9.8</td><td>9.7</td></tr>
+            ${(()=>{
+              // Build per-hole stats from DATA.greenSpeeds
+              // Each entry has holes = "All 18" | "Front 9" | "Back 9" | "1,3,5" | etc.
+              // and val = number
+              const holeMap = {};
+              for(let h=1;h<=18;h++) holeMap[h]=[];
+              DATA.greenSpeeds.forEach(s=>{
+                let holes=[];
+                if(s.holes==='All 18') holes=Array.from({length:18},(_,i)=>i+1);
+                else if(s.holes==='Front 9') holes=[1,2,3,4,5,6,7,8,9];
+                else if(s.holes==='Back 9') holes=[10,11,12,13,14,15,16,17,18];
+                else holes=s.holes.split(',').map(x=>parseInt(x.trim())).filter(n=>n>=1&&n<=18);
+                holes.forEach(h=>{ if(holeMap[h]) holeMap[h].push(s.val); });
+              });
+              const rows=[];
+              for(let h=1;h<=18;h++){
+                const arr=holeMap[h];
+                if(!arr.length) continue;
+                const latest=arr[0];
+                const avg=(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+                rows.push(`<tr><td>Hole ${h}</td><td><strong>${latest}</strong></td><td>${avg}</td><td>${arr.length}</td></tr>`);
+              }
+              return rows.length ? rows.join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">Log readings with specific holes to see per-hole stats</td></tr>';
+            })()}
           </tbody>
         </table>
       </div>
@@ -3742,20 +3834,31 @@ function openSpeedEntry(){
   <div class="modal-overlay open" id="speed-modal">
     <div class="modal-box">
       <div class="modal-title">+ Log green speed</div>
-      <div class="modal-field"><label>Holes measured (multi-select)</label>
-        <div class="scout-multi-hole-row" style="margin-top:6px;">
-          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn" onclick="this.classList.toggle('selected')">${i+1}</button>`).join('')}
-        </div>
-        <div style="margin-top:6px;display:flex;gap:4px;">
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.add('selected'))">All 18</button>
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach((b,i)=>{if(i<9)b.classList.add('selected');else b.classList.remove('selected')})">Front 9</button>
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach((b,i)=>{if(i>=9)b.classList.add('selected');else b.classList.remove('selected')})">Back 9</button>
-          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'))">Clear</button>
-        </div>
-      </div>
       <div class="modal-row">
+        <div class="modal-field">
+          <label>Hole # (optional)</label>
+          <input type="number" id="sm-hole" min="1" max="18" placeholder="1–18" oninput="
+            const v=parseInt(this.value);
+            document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'));
+            if(v>=1&&v<=18){
+              const btn=document.querySelectorAll('#speed-modal .tiny-hole-btn')[v-1];
+              if(btn)btn.classList.add('selected');
+            }
+          " onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('sm-val').focus();}">
+        </div>
         <div class="modal-field"><label>Stimpmeter reading</label><input type="number" id="sm-val" step="0.1" placeholder="e.g. 10.2"></div>
         <div class="modal-field"><label>Date</label><input type="date" id="sm-date" value="${new Date().toISOString().split('T')[0]}"></div>
+      </div>
+      <div class="modal-field"><label>Multi-select holes (optional)</label>
+        <div class="scout-multi-hole-row" style="margin-top:6px;">
+          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn" onclick="this.classList.toggle('selected');document.getElementById('sm-hole').value='';">${i+1}</button>`).join('')}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:4px;">
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.add('selected'));document.getElementById('sm-hole').value='';">All 18</button>
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach((b,i)=>{if(i<9)b.classList.add('selected');else b.classList.remove('selected')});document.getElementById('sm-hole').value='';">Front 9</button>
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach((b,i)=>{if(i>=9)b.classList.add('selected');else b.classList.remove('selected')});document.getElementById('sm-hole').value='';">Back 9</button>
+          <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'));document.getElementById('sm-hole').value='';">Clear</button>
+        </div>
       </div>
       <div class="modal-field"><label>Notes (optional)</label><input type="text" id="sm-notes" placeholder="Conditions, event context..."></div>
       <div class="modal-btns">
@@ -3765,7 +3868,7 @@ function openSpeedEntry(){
     </div>
   </div>`;
   document.getElementById('modal-container').innerHTML = html;
-  setTimeout(()=>{document.getElementById('sm-val').focus();},50);
+  setTimeout(()=>{document.getElementById('sm-hole').focus();},50);
 }
 function saveSpeed(){
   const val = parseFloat(document.getElementById('sm-val').value);
@@ -3773,6 +3876,7 @@ function saveSpeed(){
   const selected = Array.from(document.querySelectorAll('#speed-modal .tiny-hole-btn.selected')).map(b=>b.textContent);
   const holes = selected.length === 0 ? 'All 18' : selected.length === 18 ? 'All 18' : selected.join(',');
   DATA.greenSpeeds.unshift({date:MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(), val, holes, note: document.getElementById('sm-notes').value});
+  lsSave();
   showToast('Reading saved');
   closeModal('speed-modal');
   document.getElementById('modal-container').innerHTML = '';
@@ -5070,15 +5174,18 @@ function posTooltip(e,card){}
 const LS_KEY = 'fairwayos_v6_data';
 function lsSave(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(DATA)); }catch(e){}
-  sbSave(); // sync to Supabase (debounced 1.5s)
 }
 function lsLoad(){
-  // Data is now loaded from Supabase in showMainApp via supabaseLoad().
-  // localStorage is kept as a write-through cache only.
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    const saved = JSON.parse(raw);
+    Object.assign(DATA, saved);
+  }catch(e){}
 }
 
 function init(){
-  // supabaseLoad() has already run before init() is called
+  lsLoad();
   initDate();
   renderSidebar();
   renderMain();
