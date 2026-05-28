@@ -61,17 +61,17 @@ body{font-family:var(--font);background:var(--bg-base);color:var(--text-primary)
 .avatar-btn{width:32px;height:32px;border-radius:50%;background:var(--green-500);border:2px solid rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;cursor:pointer;position:relative;overflow:hidden;}
 .avatar-btn:hover{border-color:rgba(255,255,255,0.6);transform:scale(1.05);}
 .body{display:flex;flex:1;overflow:hidden;}
-.sidebar{width:224px;flex-shrink:0;border-right:1px solid var(--border);padding:16px 10px;background:var(--bg-sidebar);overflow-y:auto;}
-.main{flex:1;padding:16px 20px;overflow-y:auto;background:var(--bg-base);}
+.sidebar{width:256px;flex-shrink:0;border-right:1px solid var(--border);padding:20px 12px;background:var(--bg-sidebar);overflow-y:auto;}
+.main{flex:1;padding:20px 24px;overflow-y:auto;background:var(--bg-base);}
 .section{display:none;}.section.active{display:block;}
-.s-label{font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;padding-left:10px;}
-.s-group{margin-bottom:18px;}
-.sn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;font-size:12px;font-weight:500;color:var(--text-secondary);cursor:pointer;margin-bottom:2px;transition:all .14s;}
-.sn:hover{background:rgba(77,148,37,0.06);color:var(--text-primary);}
+.s-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;padding-left:12px;}
+.s-group{margin-bottom:22px;}
+.sn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:500;color:var(--text-secondary);cursor:pointer;margin-bottom:3px;transition:all .14s;}
+.sn:hover{background:rgba(77,148,37,0.07);color:var(--text-primary);}
 .sn.active{background:var(--green-700);color:#fff;font-weight:600;}
 .sn.active .sn-dot{background:#fff;}
-.sn-dot{width:5px;height:5px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
-.sn-badge{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;}
+.sn-dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
+.sn-badge{margin-left:auto;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:700;}
 .badge-red{background:var(--red-100);color:var(--red-600);}
 .badge-amber{background:var(--amber-100);color:var(--amber-600);}
 .badge-green{background:var(--green-100);color:var(--green-700);}
@@ -353,7 +353,7 @@ table.jb-table,table.hw-log-table,table.spray-table,table.mow-table,table.scout-
 .spot-ok{background:var(--green-500);}
 .spot-wet{background:var(--blue-600);}
 .spot-none{background:#ddd;opacity:0.5;}
-.moist-entry-row{display:grid;grid-template-columns:90px repeat(5,1fr) auto;gap:6px;align-items:center;padding:8px;background:var(--bg-field);border-radius:8px;margin-bottom:6px;}
+.moist-entry-row{display:grid;grid-template-columns:90px repeat(5,1fr) 60px auto;gap:6px;align-items:center;padding:8px;background:var(--bg-field);border-radius:8px;margin-bottom:6px;}
 .moist-entry-hole{font-size:12px;font-weight:700;color:var(--text-primary);}
 .moist-spot-input{padding:6px 8px;border-radius:6px;border:1px solid var(--border-medium);font-size:12px;background:#fff;color:var(--text-primary);font-family:var(--font);text-align:center;width:100%;}
 .moist-spot-lbl{font-size:8px;color:var(--text-muted);text-align:center;text-transform:uppercase;font-weight:700;letter-spacing:.05em;}
@@ -652,7 +652,7 @@ table.jb-table,table.hw-log-table,table.spray-table,table.mow-table,table.scout-
     </div>
     <span class="course-badge" id="courseBadge"></span>
     <button class="btn-logout-top" onclick="handleLogout()" title="Log out">Log out</button>
-    <button class="avatar-btn" title="Cooper" onclick="openProfilePanel()">CJ</button>
+    <button class="avatar-btn" id="avatar-btn" title="Profile" onclick="openProfilePanel()">?</button>
   </div>
 </div>
 
@@ -843,10 +843,19 @@ function showAuthScreen(){
 function showMainApp(){
   document.getElementById('authOverlay').classList.add('hidden');
   document.querySelector('.shell').classList.add('authenticated');
-  // Update course badge in topbar
+  // Update course badge and avatar in topbar
   if(currentCourse){
     const badge = document.getElementById('courseBadge');
     if(badge) badge.textContent = currentCourse.name;
+  }
+  if(currentUser){
+    const emailName = currentUser.email.split('@')[0];
+    const parts = emailName.replace(/[._-]/g,' ').split(' ').filter(Boolean);
+    const initials = parts.length >= 2
+      ? (parts[0][0]+parts[parts.length-1][0]).toUpperCase()
+      : emailName.slice(0,2).toUpperCase();
+    const avatar = document.getElementById('avatar-btn');
+    if(avatar){ avatar.textContent = initials; avatar.title = currentUser.email; }
   }
   // Initialize the v6 app now that DOM is visible (only once per session)
   if(!window.__fairwayInitialized && typeof window.__fairwayInit === 'function'){
@@ -1005,6 +1014,8 @@ let selectedHoles = new Set([1]); // Multi-select state
 const DATA = {
   courseName: 'Polo Fields CC',
   zipCode: '48170',
+  superFirstName: '',
+  superLastName: '',
   timeFormat: '12h',
   crewStartTime: '06:00',
   
@@ -1091,13 +1102,9 @@ const DATA = {
     {id:'eq6',nickname:'Topdresser #1',brand:'Turfco',model:'XT5',year:2019,serial:'TC-XT5-19021',hours:2,hoursMonth:2,status:'active',alert:'Running normally',alertType:'green',nextService:'Inspection in 8hrs',lastUsed:'Mar 20 · last topdress',services:[]}
   ],
   
-  workOrders: [
-    {id:'wo1',machine:'Triplex Mower #2',issue:'Reel service at 40hrs',priority:'High',assigned:'Bob M.',status:'in_progress',created:'Apr 14',parts:['TOR-88-2012'],expectedHrs:2},
-    {id:'wo2',machine:'Irrigation H-11',issue:'Broken head — hole 11',priority:'Urgent',assigned:'Unassigned',status:'open',created:'Apr 16',parts:[],expectedHrs:1},
-    {id:'wo3',machine:'Fairway Mower #1',issue:'Belt inspection + tension',priority:'Low',assigned:'Bob M.',status:'assigned',created:'Apr 17',parts:['GEN-BELT-51'],expectedHrs:0.5},
-    {id:'wo4',machine:'Spray Rig #1',issue:'Nozzle calibration',priority:'Medium',assigned:'Bob M.',status:'awaiting_parts',created:'Apr 12',parts:['TOR-SPRAY-NOZZLE-3'],expectedHrs:1.5},
-    {id:'wo5',machine:'Utility Vehicle #3',issue:'Headlight bulb out',priority:'Low',assigned:'Bob M.',status:'complete',created:'Apr 10',parts:['UTV-BULB-12V'],expectedHrs:0.25}
-  ],
+  workOrders: [],
+  mowHeights: {greens:110,fairways:500,tees:375,rough:2500,firstcut:1000,collars:350},
+  mowHistory: [],
   
   parts: [
     {pn:'TOR-125-3451',name:'Reel bearing',mfr:'Toro',compat:['eq1'],onHand:4,reorderAt:2,cost:42.50,lastUsed:'Mar 15',tracked:true,status:'ok'},
@@ -1109,13 +1116,7 @@ const DATA = {
     {pn:'UTV-BULB-12V',name:'Halogen bulb 12V H7',mfr:'Generic',compat:['eq5'],onHand:0,reorderAt:0,cost:4.50,lastUsed:'Apr 10',tracked:false,status:'catalog'}
   ],
   
-  serviceHistory: [
-    {date:'Apr 10',machine:'Fairway Mower #1',service:'Oil change',hours:'198',parts:'1 oil filter, 4qt 10W-30',cost:'$48.50',tech:'Bob M.',source:'Scheduled'},
-    {date:'Mar 15',machine:'Triplex Mower #2',service:'Reel sharpening',hours:'22.0',parts:'Grinding wheel (labor)',cost:'$120.00',tech:'Bob M.',source:'WO #19'},
-    {date:'Feb 28',machine:'Triplex Mower #2',service:'Oil change + filter',hours:'18.5',parts:'1 oil filter, 3qt oil',cost:'$42.00',tech:'Bob M.',source:'Scheduled'},
-    {date:'Feb 10',machine:'Triplex Mower #2',service:'Bedknife replacement',hours:'15.2',parts:'1 bedknife',cost:'$95.00',tech:'Bob M.',source:'Ad-hoc'},
-    {date:'Jan 22',machine:'Triplex Mower #2',service:'Full seasonal inspection',hours:'0',parts:'Various (reel assembly check)',cost:'$180.00',tech:'Bob M.',source:'Scheduled'}
-  ],
+  serviceHistory: [],
   
   sprayLog: [
     {date:'Apr 10',area:'All greens',product:'Primo Maxx',rate:'0.2 oz/1000',tech:'Carlos R.',notes:'Growth regulator — pre-tournament'},
@@ -1129,7 +1130,17 @@ const DATA = {
   
   upcomingSprays: [
     {product:'Primo Maxx + Daconil Action',area:'All greens',date:'Tue Apr 22',time:'6:00am'}
-  ]
+  ],
+
+  pins: Array.from({length:18},(_,i)=>({
+    hole: i+1,
+    x: 50,
+    y: 65,
+    position: 'Center',
+    difficulty: 'Medium',
+    notes: '',
+    approved: false
+  }))
 };
 
 // Category color mapping
@@ -1181,19 +1192,34 @@ function openSidePanel(title, bodyHtml){
 function closeSidePanel(){ document.getElementById('side-panel').classList.remove('open'); }
 
 function openProfilePanel(){
-  const tasksToday = DATA.jobs.filter(j=>j.crew==='Cooper J.'||j.crew==='CJ').length;
+  // Pull from logged-in account
+  const email = currentUser?.email || '—';
+  const courseName = currentCourse?.name || DATA.courseName || 'My Course';
+  // Build initials and display name from email
+  const emailName = email.split('@')[0];
+  const nameParts = emailName.replace(/[._-]/g,' ').split(' ').filter(Boolean);
+  // Use saved name if set, otherwise derive from email
+  const savedFirst = DATA.superFirstName || '';
+  const savedLast  = DATA.superLastName  || '';
+  const displayName = (savedFirst||savedLast)
+    ? (savedFirst+' '+savedLast).trim()
+    : nameParts.map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join(' ');
+  const initials = (savedFirst||savedLast)
+    ? ((savedFirst?savedFirst[0]:'')+(savedLast?savedLast[0]:'')).toUpperCase() || emailName.slice(0,2).toUpperCase()
+    : (nameParts.length >= 2 ? (nameParts[0][0]+nameParts[nameParts.length-1][0]).toUpperCase() : emailName.slice(0,2).toUpperCase());
+
   openSidePanel('My Profile', `
     <div style="display:flex;flex-direction:column;align-items:center;padding:16px 0 20px;">
-      <div style="width:64px;height:64px;border-radius:50%;background:var(--green-600);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:800;margin-bottom:12px;">CJ</div>
-      <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Cooper Johnson</div>
+      <div style="width:64px;height:64px;border-radius:50%;background:var(--green-600);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:800;margin-bottom:12px;">${initials}</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text-primary);">${displayName}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">Superintendent</div>
-      <div style="font-size:11px;color:var(--green-700);font-weight:600;margin-top:4px;">${DATA.courseName}</div>
+      <div style="font-size:11px;color:var(--green-700);font-weight:600;margin-top:4px;">${courseName}</div>
     </div>
     <div class="sp-section">
-      <div class="sp-section-hd">Contact</div>
+      <div class="sp-section-hd">Account</div>
       <div style="font-size:12px;color:var(--text-secondary);line-height:2;">
-        <div>📧 johcoo@umich.edu</div>
-        <div>📍 Ann Arbor, MI</div>
+        <div>📧 ${email}</div>
+        <div>🏌️ ${courseName}</div>
       </div>
     </div>
     <div class="sp-section">
@@ -1201,7 +1227,7 @@ function openProfilePanel(){
       <div style="display:flex;gap:10px;">
         <div style="flex:1;background:var(--bg-field);border-radius:9px;padding:10px 12px;text-align:center;">
           <div style="font-size:20px;font-weight:800;color:var(--green-700);">${DATA.jobs.length}</div>
-          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Jobs assigned</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Jobs today</div>
         </div>
         <div style="flex:1;background:var(--bg-field);border-radius:9px;padding:10px 12px;text-align:center;">
           <div style="font-size:20px;font-weight:800;color:var(--green-700);">${DATA.routine.filter(r=>r.done).length}/${DATA.routine.length}</div>
@@ -1213,7 +1239,7 @@ function openProfilePanel(){
       <div class="sp-section-hd">Settings</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn-outline" style="text-align:left;width:100%;" onclick="goTo('settings');closeSidePanel()">⚙ App settings</button>
-        <button class="btn-outline" style="text-align:left;width:100%;color:var(--red-600);border-color:var(--red-600);" onclick="if(confirm('Reset all data to defaults?')){localStorage.removeItem('fairwayos_v6_data');location.reload();}">↺ Reset all data</button>
+        <button class="btn-outline" style="text-align:left;width:100%;color:var(--red-600);border-color:var(--red-600);" onclick="handleLogout()">↪ Log out</button>
       </div>
     </div>
   `);
@@ -1315,11 +1341,11 @@ const SIDEBARS = {
   course: [
     {label:'COURSE', items:[
       {id:'holedetail',name:'Hole Detail'},
-      {id:'pinlocations',name:'Pin Locations'},
-      {id:'mow',name:'Mow Heights'},
       {id:'moisture',name:'Moisture Readings'},
       {id:'speed',name:'Green Speeds'},
-      {id:'scouting',name:'Scouting Log',badge:{type:'amber',count:3}}
+      {id:'scouting',name:'Scouting Log'},
+      {id:'mow',name:'Mow Heights'},
+      {id:'pinlocations',name:'Pin Locations'}
     ]}
   ],
   equipment: [
@@ -1354,6 +1380,17 @@ const DEFAULT_SUB = {
   today:'overview',course:'holedetail',equipment:'fleet',records:'spray',settings:'courseinfo'
 };
 
+function getDynamicBadge(id){
+  switch(id){
+    case 'jobboard':    return null;
+    case 'projects':    { const c=DATA.projects.filter(p=>!p.completed&&(p.priority==='urgent'||p.priority==='high')).length; return c?{type:'red',count:c}:null; }
+    case 'scouting':    { const c=DATA.scoutLog.filter(s=>s.status!=='Resolved').length; return c?{type:'amber',count:c}:null; }
+    case 'workorders':  { const c=DATA.workOrders.filter(w=>w.status!=='complete').length; return c?{type:'red',count:c}:null; }
+    case 'svc-schedule':{ const c=DATA.equipment.filter(e=>e.alertType==='amber'||e.alertType==='red').length; return c?{type:'amber',count:c}:null; }
+    case 'irr-today':   { const c=DATA.moisture.filter(m=>{const vals=Object.values(m.spots).filter(v=>v!=null);return vals.length&&Math.min(...vals)<22;}).length; return c?{type:'red',count:c}:null; }
+    default: return null;
+  }
+}
 function renderSidebar(){
   const groups = SIDEBARS[activeSection] || [];
   let html = '';
@@ -1363,7 +1400,7 @@ function renderSidebar(){
       const isActive = item.id === activeSub;
       let badgeHtml = '';
       if(item.beta) badgeHtml = '<span class="badge-beta">BETA</span>';
-      else if(item.badge) badgeHtml = '<span class="sn-badge badge-'+item.badge.type+'">'+item.badge.count+'</span>';
+            else { const dyn=getDynamicBadge(item.id); if(dyn) badgeHtml = '<span class="sn-badge badge-'+dyn.type+'">'+ dyn.count+'</span>'; }
       html += '<div class="sn'+(isActive?' active':'')+'" onclick="setSub(\''+item.id+'\')"><div class="sn-dot"></div>'+item.name+badgeHtml+'</div>';
     });
     html += '</div>';
@@ -1436,6 +1473,7 @@ function renderMain(){
   main.innerHTML = html;
   // Post-render hooks
   if(activeSub === 'overview' && activeSection === 'today') initForecastChart();
+  if(activeSub === 'speed' && activeSection === 'course') setTimeout(renderSpeedChart, 50);
   if(activeSub === 'calendar') renderMonthCalendar();
   lsSave();
 }
@@ -1532,7 +1570,12 @@ function renderTodayOverview(){
       <div class="ov-title">Moisture</div>
       <div class="ov-stat">${moistUrg}</div>
       <div class="ov-sub">Spots below threshold</div>
-      <div class="ov-alert ov-alert-red">Green 8 · Green 14</div>
+      ${(()=>{
+        const urgHoles = DATA.moisture.filter(m=>Object.values(m.spots).filter(v=>v!=null).some(v=>v<20)).map(m=>'Green '+m.hole);
+        return urgHoles.length
+          ? '<div class="ov-alert ov-alert-red">'+urgHoles.slice(0,3).join(' · ')+(urgHoles.length>3?' +more':'')+'</div>'
+          : '<div class="ov-alert ov-alert-green">All greens OK</div>';
+      })()}
       <div class="ov-arrow">→ Moisture readings</div>
     </div>
     <div class="ov-card" onclick="navTo('course','scouting')">
@@ -1544,16 +1587,27 @@ function renderTodayOverview(){
     </div>
     <div class="ov-card" onclick="navTo('course','speed')">
       <div class="ov-title">Green Speed</div>
-      <div class="ov-stat">10.2</div>
-      <div class="ov-sub">Stimpmeter — today</div>
-      <div class="ov-alert ov-alert-green">↑ 0.4 from yesterday</div>
+      ${(()=>{
+        const latest = DATA.greenSpeeds && DATA.greenSpeeds.length ? DATA.greenSpeeds[0] : null;
+        const prev   = DATA.greenSpeeds && DATA.greenSpeeds.length > 1 ? DATA.greenSpeeds[1] : null;
+        if(!latest) return '<div class="ov-stat">—</div><div class="ov-sub">No readings yet</div><div class="ov-alert ov-alert-amber">Log first reading</div>';
+        const diff = prev ? (latest.val - prev.val).toFixed(1) : null;
+        const diffTxt = diff !== null ? (diff > 0 ? '+ '+diff+' from last' : diff < 0 ? '- '+Math.abs(diff)+' from last' : '— No change') : 'First reading';
+        const diffCls = diff > 0 ? 'ov-alert-green' : diff < 0 ? 'ov-alert-amber' : 'ov-alert-green';
+        return '<div class="ov-stat">'+latest.val+'</div><div class="ov-sub">Stimpmeter — '+latest.date+'</div><div class="ov-alert '+diffCls+'">'+diffTxt+'</div>';
+      })()}
       <div class="ov-arrow">→ Green speeds</div>
     </div>
     <div class="ov-card" onclick="navTo('equipment','fleet')">
       <div class="ov-title">Equipment</div>
       <div class="ov-stat">${woOpen}</div>
       <div class="ov-sub">Open work orders</div>
-      <div class="ov-alert ov-alert-amber">Triplex #2 · Irrig H-11</div>
+      ${(()=>{
+        const openWOs = DATA.workOrders.filter(w=>w.status!=='complete');
+        return openWOs.length
+          ? '<div class="ov-alert ov-alert-amber">'+openWOs.slice(0,2).map(w=>w.machine.split(' ').slice(0,2).join(' ')).join(' · ')+(openWOs.length>2?' +more':'')+'</div>'
+          : '<div class="ov-alert ov-alert-green">No open orders</div>';
+      })()}
       <div class="ov-arrow">→ Fleet</div>
     </div>
     <div class="ov-card" onclick="navTo('records','spray')">
@@ -3353,18 +3407,23 @@ function renderHoleDetail(){
     <div class="card">
       <div class="card-head"><div class="card-title">Mow height</div></div>
       <div class="card-body">
-        <div class="stat-val">0.110"</div>
+        <div class="stat-val">${((DATA.mowHeights?.greens||110)/1000).toFixed(3)}"</div>
         <div class="stat-lbl">Today · greens</div>
-        <div class="stat-ai" style="color:var(--amber-600);">↓ from 0.125" — dry forecast</div>
+        <div class="stat-ai">Current setting</div>
         <button class="btn-outline" style="margin-top:10px;width:100%;" onclick="navTo('course','mow')">Change →</button>
       </div>
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title">Green speed</div></div>
       <div class="card-body">
-        <div class="stat-val">10.2</div>
-        <div class="stat-lbl">Stimpmeter today</div>
-        <div class="stat-ai">Last measured 6am · ↑ 0.4</div>
+        ${(()=>{
+          const latest = DATA.greenSpeeds && DATA.greenSpeeds.length ? DATA.greenSpeeds[0] : null;
+          const prev = DATA.greenSpeeds && DATA.greenSpeeds.length > 1 ? DATA.greenSpeeds[1] : null;
+          if(!latest) return '<div class="stat-val">—</div><div class="stat-lbl">No readings yet</div>';
+          const diff = prev ? (latest.val - prev.val).toFixed(1) : null;
+          const diffTxt = diff !== null ? (parseFloat(diff) > 0 ? '+ '+diff+' from last' : parseFloat(diff) < 0 ? diff+' from last' : 'No change') : 'First reading';
+          return '<div class="stat-val">'+latest.val+'</div><div class="stat-lbl">Stimpmeter · '+latest.date+'</div><div class="stat-ai">'+diffTxt+'</div>';
+        })()}
         <button class="btn-outline" style="margin-top:10px;width:100%;" onclick="navTo('course','speed')">Log reading →</button>
       </div>
     </div>
@@ -3413,13 +3472,32 @@ function renderHoleDetail(){
   <div class="card">
     <div class="card-head"><div class="card-title">Recent activity — last 7 days</div></div>
     <div class="card-body">
-      <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
-        • <strong>Apr 17 · 5:30 AM</strong> — Greens mowed (Mike T., Triplex #2)<br>
-        • <strong>Apr 16 · 6:12 AM</strong> — Hand watered (Jake S., 12 min)<br>
-        • <strong>Apr 15 · 10:00 PM</strong> — Standard irrigation run (12 min)<br>
-        • <strong>Apr 14 · 5:45 AM</strong> — Greens mowed (Mike T., Triplex #2)<br>
-        • <strong>Apr 12 · 2:00 PM</strong> — Scouting log: Dollar spot flagged (Cooper)
-      </div>
+      ${(()=>{
+        const h = curHoleDetail;
+        const items = [];
+        // Jobs involving this hole's area
+        DATA.jobs.forEach(j=>{
+          if(j.area==='Greens'||j.task.toLowerCase().includes('green '+h)||j.task.toLowerCase().includes('hole '+h)){
+            items.push({ts:'Today', label: j.task+(j.crew&&j.crew!=='— Unassigned'?' ('+j.crew+')':'')});
+          }
+        });
+        // Hand water log for this hole
+        DATA.handWaterLog.filter(hw=>hw.hole==='Green '+h).forEach(hw=>{
+          items.push({ts:hw.date, label:'Hand watered — '+hw.dur+(hw.crew?' ('+hw.crew+')':'')+(hw.notes?' · '+hw.notes:'')});
+        });
+        // Scout log for this hole
+        DATA.scoutLog.filter(s=>s.holes&&s.holes.includes(h)).forEach(s=>{
+          items.push({ts:s.date, label:'Scouting: '+s.issue+' ('+s.sev+')'});
+        });
+        // Irrigation log
+        DATA.irrLog.slice(0,3).forEach(ir=>{
+          items.push({ts:ir.date, label:'Irrigation — '+ir.zone+' · '+ir.actual+(ir.reason&&ir.reason!=='Normal'?' ('+ir.reason+')':'')});
+        });
+        if(!items.length) return '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px;">No recent activity logged for Hole '+h+'</div>';
+        return '<div style="font-size:12px;color:var(--text-secondary);line-height:1.9;">'+
+          items.slice(0,6).map(i=>'• <strong>'+i.ts+'</strong> — '+i.label).join('<br>')+
+          '</div>';
+      })()}
     </div>
   </div>
   `;
@@ -3427,77 +3505,151 @@ function renderHoleDetail(){
 function setHoleDetail(n){ curHoleDetail = n; renderMain(); }
 
 /* ═══ COURSE → PIN LOCATIONS ═══ */
+let activePinHole = 1;
+
 function renderPinLocations(){
+  const pin = DATA.pins[activePinHole-1];
+  const diffColor = pin.difficulty==='Easy'?'var(--green-700)':pin.difficulty==='Hard'?'var(--red-600)':'var(--amber-600)';
   return `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
     <div>
       <div style="font-size:16px;font-weight:800;">Pin Location Dashboard</div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Click any hole to adjust · Drag pin to place · Approve when ready</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Select a hole · Click green diagram to place pin · Approve when ready</div>
     </div>
     <div style="display:flex;gap:8px;">
-      <button class="btn-outline">📋 Load template</button>
       <button class="btn-outline" onclick="approveAllPins()">✓ Approve all</button>
-      <button class="btn-green" onclick="showToast('Pin sheet downloaded')">⬇ Download pin sheet</button>
+      <button class="btn-green" onclick="downloadPinSheet()">⬇ Download pin sheet</button>
     </div>
   </div>
-  
-  <div class="pin-dashboard">
-    ${Array.from({length:18},(_,i)=>{
-      const diffs = ['Medium','Easy','Hard','Medium','Easy','Medium','Hard','Medium','Easy','Hard','Medium','Easy','Hard','Medium','Easy','Medium','Hard','Medium'];
-      const positions = ['Center-Front','Back-Left','Center-Right','Front-Left','Back-Center','Center','Back-Right','Front-Center','Center-Left','Back-Front','Front-Right','Back-Center','Front-Left','Center-Back','Front-Right','Center','Back-Left','Front-Center'];
-      return `
-        <div class="pin-mini-card ${i<3?'approved':''}" onclick="selectPinHole(${i+1})">
-          <div class="pin-mini-hole">HOLE ${i+1}</div>
-          <div class="pin-mini-pos">${positions[i]}</div>
-          <div class="pin-mini-diff" style="color:${diffs[i]==='Easy'?'var(--green-700)':diffs[i]==='Medium'?'var(--amber-600)':'var(--red-600)'}">${diffs[i]}</div>
-        </div>
-      `;
-    }).join('')}
+
+  <div class="pin-dashboard" style="margin-bottom:14px;">
+    ${DATA.pins.map((p,i)=>`
+      <div class="pin-mini-card ${p.approved?'approved':''} ${activePinHole===p.hole?'selected':''}"
+           onclick="selectPinHole(${p.hole})"
+           style="${activePinHole===p.hole?'border-color:var(--green-700);box-shadow:0 0 0 2px rgba(59,122,27,0.18);':''}">
+        <div class="pin-mini-hole">HOLE ${p.hole}</div>
+        <div class="pin-mini-pos" style="font-size:10px;">${p.position}</div>
+        <div class="pin-mini-diff" style="font-size:9px;color:${p.difficulty==='Easy'?'var(--green-700)':p.difficulty==='Hard'?'var(--red-600)':'var(--amber-600)'};">${p.difficulty}</div>
+      </div>
+    `).join('')}
   </div>
-  
+
   <div class="card" style="margin-bottom:12px;">
     <div class="card-head">
-      <div class="card-title">Hole 1 — Pin Placement</div>
-      <div style="display:flex;gap:6px;"><div class="ai-chip">✦ AI suggested</div><button class="btn-green">✓ Approve</button></div>
+      <div class="card-title">Hole ${activePinHole} — Pin Placement</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span style="font-size:11px;color:var(--text-muted);">${pin.approved?'✓ Approved':'Not approved'}</span>
+        <button class="btn-green" onclick="approvePin(${activePinHole})">${pin.approved?'✓ Approved':'Approve'}</button>
+      </div>
     </div>
     <div class="card-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
         <div>
-          <div class="green-diagram">
-            <div class="green-diagram-label">HOLE 1 · Click to place pin</div>
-            <div class="pin-marker" style="left:50%;top:70%;"></div>
+          <div class="green-diagram" id="green-diagram-${activePinHole}" onclick="placePinOnClick(event,${activePinHole})" style="cursor:crosshair;">
+            <div class="green-diagram-label">HOLE ${activePinHole} · Click to place pin</div>
+            <div class="pin-marker" id="pin-marker-${activePinHole}" style="left:${pin.x}%;top:${pin.y}%;"></div>
           </div>
-          <div style="font-size:10px;color:var(--text-muted);text-align:center;">Click anywhere on green to move pin</div>
+          <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:4px;">Click anywhere on the green to move the pin</div>
         </div>
         <div>
-          <div class="ai-suggest" style="margin-bottom:10px;">
-            <div class="ai-suggest-hd">✦ AI RECOMMENDATION</div>
-            <div class="ai-suggest-txt">Center-Front — High traffic weekend. Gives recovery room and keeps pace of play moving. Moisture OK, no disease flags.</div>
+          <div class="modal-field">
+            <label>Position label</label>
+            <input type="text" id="pin-pos-${activePinHole}" value="${pin.position}" oninput="updatePinField(${activePinHole},'position',this.value)">
           </div>
-          <div class="modal-field"><label>Position label</label><input type="text" value="Center-Front"></div>
-          <div class="modal-field"><label>Difficulty</label><select><option>Easy</option><option selected>Medium</option><option>Hard</option></select></div>
-          <div class="modal-field"><label>Notes</label><input type="text" placeholder="Optional notes"></div>
+          <div class="modal-field">
+            <label>Difficulty</label>
+            <select id="pin-diff-${activePinHole}" onchange="updatePinField(${activePinHole},'difficulty',this.value)">
+              <option ${pin.difficulty==='Easy'?'selected':''}>Easy</option>
+              <option ${pin.difficulty==='Medium'?'selected':''}>Medium</option>
+              <option ${pin.difficulty==='Hard'?'selected':''}>Hard</option>
+            </select>
+          </div>
+          <div class="modal-field">
+            <label>Notes</label>
+            <input type="text" id="pin-notes-${activePinHole}" value="${pin.notes}" placeholder="Optional notes..." oninput="updatePinField(${activePinHole},'notes',this.value)">
+          </div>
+          <div style="margin-top:8px;padding:10px;background:var(--bg-field);border-radius:8px;font-size:11px;color:var(--text-secondary);">
+            📍 Pin at <strong>${pin.x}% left, ${pin.y}% from top</strong>
+          </div>
         </div>
       </div>
     </div>
   </div>
-  
-  <div class="card">
-    <div class="card-head"><div class="card-title">Generate full AI pin sheet</div><div class="ai-chip">✦ AI</div></div>
-    <div class="card-body">
-      <textarea placeholder='e.g. "Member-Guest tournament Saturday — mix of difficult and fair pins, favor finishing holes as hard."' style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border-medium);font-size:12px;background:var(--bg-field);font-family:var(--font);min-height:70px;margin-bottom:8px;"></textarea>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-green">Generate pin sheet</button>
-        <button class="btn-outline">💾 Save as template</button>
-      </div>
-    </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:14px;">
+    ${activePinHole>1?`<button class="btn-outline" onclick="selectPinHole(${activePinHole-1})">← Hole ${activePinHole-1}</button>`:''}
+    ${activePinHole<18?`<button class="btn-green" onclick="selectPinHole(${activePinHole+1})">Hole ${activePinHole+1} →</button>`:''}
   </div>
   `;
 }
-function selectPinHole(n){ showToast('Hole '+n+' selected — editor updated'); }
+
+function selectPinHole(n){
+  activePinHole = n;
+  renderMain();
+}
+
+function placePinOnClick(e, hole){
+  const diagram = e.currentTarget;
+  const rect = diagram.getBoundingClientRect();
+  const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+  const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+  const clampedX = Math.max(5, Math.min(95, x));
+  const clampedY = Math.max(5, Math.min(95, y));
+  DATA.pins[hole-1].x = clampedX;
+  DATA.pins[hole-1].y = clampedY;
+  DATA.pins[hole-1].approved = false;
+  // Update position label based on x/y
+  const pos = pinPositionLabel(clampedX, clampedY);
+  DATA.pins[hole-1].position = pos;
+  lsSave();
+  // Update marker and position display immediately without full re-render
+  const marker = document.getElementById('pin-marker-'+hole);
+  if(marker){ marker.style.left=clampedX+'%'; marker.style.top=clampedY+'%'; }
+  const posInput = document.getElementById('pin-pos-'+hole);
+  if(posInput) posInput.value = pos;
+  const posDisplay = document.querySelector('#green-diagram-'+hole+' + div + div .modal-field input');
+  showToast('Pin placed — '+pos);
+}
+
+function pinPositionLabel(x, y){
+  const col = x < 35 ? 'Left' : x > 65 ? 'Right' : 'Center';
+  const row = y < 35 ? 'Front' : y > 65 ? 'Back' : 'Middle';
+  if(col==='Center' && row==='Middle') return 'Center';
+  if(col==='Center') return row;
+  if(row==='Middle') return col;
+  return row+'-'+col;
+}
+
+function updatePinField(hole, field, value){
+  DATA.pins[hole-1][field] = value;
+  lsSave();
+}
+
+function approvePin(hole){
+  DATA.pins[hole-1].approved = !DATA.pins[hole-1].approved;
+  lsSave();
+  renderMain();
+}
+
 function approveAllPins(){
-  document.querySelectorAll('.pin-mini-card').forEach(c=>c.classList.add('approved'));
+  DATA.pins.forEach(p=>p.approved=true);
+  lsSave();
+  renderMain();
   showToast('All 18 pins approved');
+}
+
+function downloadPinSheet(){
+  const lines = ['HOLE,POSITION,DIFFICULTY,NOTES'];
+  DATA.pins.forEach(p=>{
+    lines.push(`${p.hole},"${p.position}","${p.difficulty}","${p.notes}"`);
+  });
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pin-sheet-'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+  showToast('Pin sheet downloaded');
 }
 
 /* ═══ COURSE → MOW HEIGHTS ═══ */
@@ -3522,12 +3674,12 @@ function renderMowHeights(){
         <table class="mow-table">
           <thead><tr><th>Zone</th><th>Height</th><th>AI change</th></tr></thead>
           <tbody>
-            <tr><td>Greens</td><td><div class="qa-row"><input type="range" min="80" max="200" step="5" value="110" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">0.110"</div></div></td><td><span class="proj-badge pb-g">↓ from 0.125"</span></td></tr>
-            <tr><td>Fairways</td><td><div class="qa-row"><input type="range" min="300" max="700" step="25" value="500" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">0.500"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
-            <tr><td>Tees</td><td><div class="qa-row"><input type="range" min="250" max="500" step="25" value="375" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">0.375"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
-            <tr><td>Rough</td><td><div class="qa-row"><input type="range" min="1500" max="3500" step="125" value="2500" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">2.500"</div></div></td><td><span class="proj-badge pb-a">↑ from 2.250"</span></td></tr>
-            <tr><td>1st Cut</td><td><div class="qa-row"><input type="range" min="700" max="1500" step="50" value="1000" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">1.000"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
-            <tr><td>Collars/Approach</td><td><div class="qa-row"><input type="range" min="250" max="500" step="25" value="350" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">0.350"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
+            <tr><td>Greens</td><td><div class="qa-row"><input id="mh-greens" type="range" min="80" max="200" step="5" value="${DATA.mowHeights?.greens||110}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.greens||110)/1000).toFixed(3)}"</div></div></td><td><span class="proj-badge pb-g">↓ from 0.125"</span></td></tr>
+            <tr><td>Fairways</td><td><div class="qa-row"><input id="mh-fairways" type="range" min="300" max="700" step="25" value="${DATA.mowHeights?.fairways||500}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.fairways||500)/1000).toFixed(3)}"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
+            <tr><td>Tees</td><td><div class="qa-row"><input id="mh-tees" type="range" min="250" max="500" step="25" value="${DATA.mowHeights?.tees||375}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.tees||375)/1000).toFixed(3)}"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
+            <tr><td>Rough</td><td><div class="qa-row"><input id="mh-rough" type="range" min="1500" max="3500" step="125" value="${DATA.mowHeights?.rough||2500}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.rough||2500)/1000).toFixed(3)}"</div></div></td><td><span class="proj-badge pb-a">↑ from 2.250"</span></td></tr>
+            <tr><td>1st Cut</td><td><div class="qa-row"><input id="mh-firstcut" type="range" min="700" max="1500" step="50" value="${DATA.mowHeights?.firstcut||1000}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.firstcut||1000)/1000).toFixed(3)}"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
+            <tr><td>Collars/Approach</td><td><div class="qa-row"><input id="mh-collars" type="range" min="250" max="500" step="25" value="${DATA.mowHeights?.collars||350}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.collars||350)/1000).toFixed(3)}"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -3554,11 +3706,9 @@ function renderMowHeights(){
       <div class="card-head"><div class="card-title">Mow height change history</div></div>
       <div class="card-body" style="padding:0;">
         <table class="mow-table">
-          <thead><tr><th>Date</th><th>Zone</th><th>Change</th><th>User</th><th>Reason</th></tr></thead>
+          <thead><tr><th>Date</th><th>Zone</th><th>Change</th><th>By</th></tr></thead>
           <tbody>
-            <tr><td>Apr 14</td><td>Greens</td><td>0.125" → 0.110"</td><td>Cooper</td><td>Dry forecast, speed up for tournament</td></tr>
-            <tr><td>Apr 14</td><td>Rough</td><td>2.250" → 2.500"</td><td>Cooper</td><td>Recovery from recent dry stress</td></tr>
-            <tr><td>Mar 28</td><td>Greens</td><td>0.140" → 0.125"</td><td>Cooper</td><td>Post-aerification recovery</td></tr>
+            ${(DATA.mowHistory&&DATA.mowHistory.length)?DATA.mowHistory.map(h=>`<tr><td>${h.date}</td><td>${h.zone}</td><td>${h.change}</td><td>${h.user}</td></tr>`).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">No changes logged yet — use Push to Mechanic to record height changes</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -3568,18 +3718,48 @@ function renderMowHeights(){
 }
 function setMowView(v){ mowView = v; renderMain(); }
 function pushHeightsToWO(){
+  // Read current slider values
+  const zones = {greens:'mh-greens',fairways:'mh-fairways',tees:'mh-tees',rough:'mh-rough',firstcut:'mh-firstcut',collars:'mh-collars'};
+  const heights = {};
+  const changes = [];
+  const prev = DATA.mowHeights || {};
+  Object.entries(zones).forEach(([zone, id])=>{
+    const el = document.getElementById(id);
+    if(el){
+      const val = parseInt(el.value);
+      heights[zone] = val;
+      const oldVal = prev[zone];
+      if(oldVal && oldVal !== val){
+        changes.push(zone.charAt(0).toUpperCase()+zone.slice(1)+': '+(oldVal/1000).toFixed(3)+'" → '+(val/1000).toFixed(3)+'"');
+      } else if(!oldVal){
+        changes.push(zone.charAt(0).toUpperCase()+zone.slice(1)+': '+(val/1000).toFixed(3)+'"');
+      }
+    }
+  });
+  // Save heights to DATA
+  DATA.mowHeights = heights;
+  // Add to history
+  if(!DATA.mowHistory) DATA.mowHistory = [];
+  const today = MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate();
+  changes.forEach(c=>{
+    const parts = c.split(': ');
+    DATA.mowHistory.unshift({date:today, zone:parts[0], change:parts[1]||'', user:'Superintendent'});
+  });
+  // Create work order
+  const issueText = changes.length ? 'Mow height adjustment — '+changes.join(', ') : 'Mow height settings confirmed';
   DATA.workOrders.unshift({
     id:'wo'+(DATA.workOrders.length+1),
-    machine:'Triplex Mower #2',
-    issue:'Mow height adjustment — greens 0.110"',
+    machine:'All mowing equipment',
+    issue: issueText,
     priority:'Medium',
     assigned:'Bob M.',
     status:'open',
-    created: MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(),
+    created: today,
     parts:[],
     expectedHrs:0.25
   });
-  showToast('Work order created · Bob M. notified');
+  lsSave();
+  showToast('Heights saved · Work order sent to mechanic');
 }
 
 
@@ -3603,13 +3783,14 @@ function renderMoisture(){
         <div class="ai-suggest-txt">Green 8 NW (left spot) consistently drives hand-water needs — dry 5 of last 7 days. Recurring issue suggests soil compaction or irrigation coverage gap. Consider wetting agent application or irrigation head audit.</div>
       </div>
       <div class="card" style="box-shadow:none;border:1px solid var(--border);">
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-field);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:grid;grid-template-columns:90px repeat(5,1fr) auto;gap:6px;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-field);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:grid;grid-template-columns:90px repeat(5,1fr) 60px 40px;gap:6px;">
           <div>HOLE</div>
           <div class="moist-spot-lbl">Front</div>
           <div class="moist-spot-lbl">Middle</div>
           <div class="moist-spot-lbl">Back</div>
           <div class="moist-spot-lbl">Left</div>
           <div class="moist-spot-lbl">Right</div>
+          <div class="moist-spot-lbl">Avg</div>
           <div style="width:40px;"></div>
         </div>
         <div style="padding:10px;">
@@ -3619,9 +3800,10 @@ function renderMoisture(){
               <div class="moist-entry-row" onclick="openMoistureDetail(${m.hole})" style="cursor:pointer;">
                 <div class="moist-entry-hole">Green ${m.hole}</div>
                 ${['front','middle','back','left','right'].map(k=>{const v=m.spots[k];return `<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;font-weight:700;color:${v==null?'var(--text-muted)':v<22?'var(--red-600)':v<28?'var(--green-700)':'var(--blue-600)'};">${v!=null?v+'%':'—'}</div>`;}).join('')}
+                ${(()=>{const vals=Object.values(m.spots).filter(v=>v!=null);if(!vals.length)return `<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;font-weight:700;color:var(--text-muted);">—</div>`;const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);return `<div style="text-align:center;padding:6px;background:${avg<22?'var(--red-100)':avg<28?'var(--green-100)':'var(--blue-100)'};border-radius:6px;font-size:12px;font-weight:800;color:${avg<22?'var(--red-600)':avg<28?'var(--green-700)':'var(--blue-600)'};">${avg}%</div>`;})()}
                 <div style="display:flex;gap:4px;">
-                  <button class="row-icon-btn" onclick="event.stopPropagation();showToast('Edit — demo')">✏</button>
-                  <button class="row-icon-btn row-del" onclick="event.stopPropagation();showToast('Delete — demo')">×</button>
+                  <button class="row-icon-btn" onclick="event.stopPropagation();editMoistureReading(${m.hole})">✏</button>
+                  <button class="row-icon-btn row-del" onclick="event.stopPropagation();deleteMoistureReading(event,${m.hole})">×</button>
                 </div>
               </div>
             `;
@@ -3631,6 +3813,94 @@ function renderMoisture(){
     </div>
   </div>
   `;
+}
+
+function editMoistureReading(hole){
+  const m = DATA.moisture.find(x=>x.hole===hole);
+  if(!m) return;
+  const html = `
+  <div class="modal-overlay open" id="moist-modal">
+    <div class="modal-box wide">
+      <div class="modal-title">✏ Edit moisture reading — Green ${hole}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Update the 5-spot readings for Green ${hole}. Tab between fields.</div>
+      <div class="modal-row" style="align-items:flex-end;margin-bottom:12px;">
+        <div class="modal-field" style="max-width:90px;margin:0;">
+          <label>Hole #</label>
+          <input type="number" id="ms-hole" min="1" max="18" value="${hole}" readonly style="background:var(--bg-field);color:var(--text-muted);">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Front</label>
+          <input type="number" id="ms-front" placeholder="%" min="0" max="100" value="${m.spots.front!=null?m.spots.front:''}"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-middle').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Middle</label>
+          <input type="number" id="ms-middle" placeholder="%" min="0" max="100" value="${m.spots.middle!=null?m.spots.middle:''}"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-back').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Back</label>
+          <input type="number" id="ms-back" placeholder="%" min="0" max="100" value="${m.spots.back!=null?m.spots.back:''}"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-left').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Left</label>
+          <input type="number" id="ms-left" placeholder="%" min="0" max="100" value="${m.spots.left!=null?m.spots.left:''}"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-right').focus();}">
+        </div>
+        <div class="modal-field" style="margin:0;flex:1;">
+          <label>Right</label>
+          <input type="number" id="ms-right" placeholder="%" min="0" max="100" value="${m.spots.right!=null?m.spots.right:''}"
+            onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-notes').focus();}">
+        </div>
+      </div>
+      <div class="modal-field"><label>Notes (optional)</label><input type="text" id="ms-notes" value="${m.notes||''}" placeholder="e.g. NW corner dry, wind exposure"></div>
+      <div class="modal-btns">
+        <button class="btn-outline" onclick="closeModal('moist-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
+        <button class="btn-green" onclick="saveEditedMoisture(${hole})">Save changes</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-container').innerHTML = html;
+  setTimeout(()=>{ document.getElementById('ms-front').focus(); }, 50);
+}
+
+function saveEditedMoisture(hole){
+  const front  = parseFloat(document.getElementById('ms-front').value)  || null;
+  const middle = parseFloat(document.getElementById('ms-middle').value) || null;
+  const back   = parseFloat(document.getElementById('ms-back').value)   || null;
+  const left   = parseFloat(document.getElementById('ms-left').value)   || null;
+  const right  = parseFloat(document.getElementById('ms-right').value)  || null;
+  const notes  = document.getElementById('ms-notes').value.trim();
+  const now = new Date();
+  const ts = MONTHS_SHORT[now.getMonth()]+' '+now.getDate()+' · '+
+    (DATA.timeFormat==='24h'
+      ? String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')
+      : ((now.getHours()%12)||12)+':'+(String(now.getMinutes()).padStart(2,'0'))+(now.getHours()<12?'am':'pm'));
+  const idx = DATA.moisture.findIndex(m=>m.hole===hole);
+  if(idx>=0){
+    const spots = {};
+    if(front  !== null) spots.front  = front;
+    if(middle !== null) spots.middle = middle;
+    if(back   !== null) spots.back   = back;
+    if(left   !== null) spots.left   = left;
+    if(right  !== null) spots.right  = right;
+    DATA.moisture[idx] = { hole, spots, ts, notes };
+  }
+  lsSave();
+  showToast('Reading updated');
+  closeModal('moist-modal');
+  document.getElementById('modal-container').innerHTML = '';
+  renderMain();
+}
+
+function deleteMoistureReading(e, hole){
+  e.stopPropagation();
+  if(!confirm('Delete moisture reading for Green '+hole+'?')) return;
+  DATA.moisture = DATA.moisture.filter(m=>m.hole!==hole);
+  lsSave();
+  renderMain();
+  showToast('Reading deleted');
 }
 
 function openMoistureEntry(){
@@ -3760,7 +4030,7 @@ function renderGreenSpeeds(){
       <div class="card-head"><div class="card-title">Green Speed — Stimpmeter</div><button class="btn-green" onclick="openSpeedEntry()">+ Log reading</button></div>
       <div class="card-body">
         <div style="font-size:38px;font-weight:800;color:var(--text-primary);letter-spacing:-1px;">${vals[0]}</div>
-        <div style="font-size:11px;color:var(--text-muted);">Today · ${DATA.greenSpeeds[0].holes}</div>
+        <div style="font-size:11px;color:var(--text-muted);">Latest · ${DATA.greenSpeeds[0].holes} · ${DATA.greenSpeeds[0].date}</div>
         <div style="margin-top:14px;">
           <div class="gs-scale-zones">
             <div class="gs-scale-zone" style="background:#D4830A;flex:33.3;">SLOW</div>
@@ -3770,18 +4040,41 @@ function renderGreenSpeeds(){
           <div class="gs-scale-marker-row"><div class="gs-scale-marker" data-val="${vals[0]}" style="left:${marker}%;"></div></div>
           <div class="gs-scale-labels-row"><span>7.0</span><span>9.0</span><span>11.0</span><span>13.0</span></div>
         </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px;">
+          ${(()=>{
+            const latest = vals[0];
+            const now = new Date();
+            const monthAgo = new Date(now); monthAgo.setDate(monthAgo.getDate()-30);
+            // Parse dates like "Apr 14", "May 27" — use last 30 entries as proxy for month
+            const monthVals = vals.slice(0, Math.min(vals.length, 30));
+            const monthAvg = monthVals.length ? (monthVals.reduce((a,b)=>a+b,0)/monthVals.length).toFixed(1) : '—';
+            const allAvg = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+            const statStyle = 'background:var(--bg-field);border-radius:10px;padding:10px 12px;text-align:center;';
+            return [
+              {label:'Last reading', val:latest},
+              {label:'Past month avg', val:monthAvg},
+              {label:'All-time avg', val:allAvg}
+            ].map(s=>'<div style="'+statStyle+'">'
+              +'<div style="font-size:20px;font-weight:800;color:var(--green-700);letter-spacing:-0.5px;">'+s.val+'</div>'
+              +'<div style="font-size:10px;color:var(--text-muted);margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">'+s.label+'</div>'
+              +'</div>').join('');
+          })()}
+        </div>
       </div>
     </div>
     <div class="card">
-      <div class="card-head"><div class="card-title">Per-hole statistics (last 30 days)</div></div>
+      <div class="card-head">
+        <div class="card-title">Per-hole statistics</div>
+        <div style="display:flex;gap:3px;background:var(--bg-field);padding:3px;border-radius:8px;border:1px solid var(--border);">
+          <button id="gs-front9-btn" onclick="setGsHalf('front')" style="padding:4px 12px;font-size:11px;font-weight:600;border-radius:5px;border:none;cursor:pointer;font-family:var(--font);background:var(--green-700);color:#fff;">Front 9</button>
+          <button id="gs-back9-btn" onclick="setGsHalf('back')" style="padding:4px 12px;font-size:11px;font-weight:600;border-radius:5px;border:none;cursor:pointer;font-family:var(--font);background:none;color:var(--text-muted);">Back 9</button>
+        </div>
+      </div>
       <div class="card-body" style="padding:0;">
         <table class="mow-table">
-          <thead><tr><th>Hole</th><th>Latest</th><th>30-day avg</th><th>Readings</th></tr></thead>
-          <tbody>
+          <thead><tr><th>Hole</th><th>Latest</th><th>Avg</th><th>Readings</th></tr></thead>
+          <tbody id="gs-hole-tbody">
             ${(()=>{
-              // Build per-hole stats from DATA.greenSpeeds
-              // Each entry has holes = "All 18" | "Front 9" | "Back 9" | "1,3,5" | etc.
-              // and val = number
               const holeMap = {};
               for(let h=1;h<=18;h++) holeMap[h]=[];
               DATA.greenSpeeds.forEach(s=>{
@@ -3793,14 +4086,14 @@ function renderGreenSpeeds(){
                 holes.forEach(h=>{ if(holeMap[h]) holeMap[h].push(s.val); });
               });
               const rows=[];
-              for(let h=1;h<=18;h++){
+              for(let h=1;h<=9;h++){
                 const arr=holeMap[h];
-                if(!arr.length) continue;
+                if(!arr.length){ rows.push('<tr><td>Hole '+h+'</td><td colspan="3" style="color:var(--text-muted);">No data</td></tr>'); continue; }
                 const latest=arr[0];
                 const avg=(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
-                rows.push(`<tr><td>Hole ${h}</td><td><strong>${latest}</strong></td><td>${avg}</td><td>${arr.length}</td></tr>`);
+                rows.push('<tr onclick="goToStimpHole('+h+')" style="cursor:pointer;" onmouseover="this.style.background=\'var(--green-50)\'" onmouseout="this.style.background=\'\'"><td style="color:var(--green-700);font-weight:700;">Hole '+h+'</td><td><strong>'+latest+'</strong></td><td>'+avg+'</td><td>'+arr.length+'</td></tr>');
               }
-              return rows.length ? rows.join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">Log readings with specific holes to see per-hole stats</td></tr>';
+              return rows.join('');
             })()}
           </tbody>
         </table>
@@ -3808,6 +4101,22 @@ function renderGreenSpeeds(){
     </div>
   </div>
   
+  <div class="card" style="margin-bottom:14px;">
+    <div class="card-head">
+      <div class="card-title">Green Speed Trend</div>
+      <select id="gs-timeframe" onchange="renderSpeedChart()" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border-medium);font-size:12px;font-weight:600;background:var(--bg-card);color:var(--text-primary);font-family:var(--font);cursor:pointer;">
+        <option value="7">1 Week</option>
+        <option value="30" selected>1 Month</option>
+        <option value="90">3 Months</option>
+        <option value="365">YTD</option>
+      </select>
+    </div>
+    <div class="card-body" style="padding:16px 18px 10px;">
+      <canvas id="gs-chart" style="width:100%;height:180px;display:block;"></canvas>
+      <div id="gs-chart-empty" style="display:none;text-align:center;padding:40px;font-size:12px;color:var(--text-muted);">Not enough data for selected timeframe</div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-head"><div class="card-title">Recent readings</div><button class="btn-outline">Export CSV</button></div>
     <div class="card-body">
@@ -3827,6 +4136,162 @@ function renderGreenSpeeds(){
     </div>
   </div>
   `;
+}
+
+let gsHalf = 'front';
+
+function setGsHalf(half){
+  gsHalf = half;
+  const frontBtn = document.getElementById('gs-front9-btn');
+  const backBtn = document.getElementById('gs-back9-btn');
+  if(frontBtn && backBtn){
+    frontBtn.style.background = half==='front' ? 'var(--green-700)' : 'none';
+    frontBtn.style.color = half==='front' ? '#fff' : 'var(--text-muted)';
+    backBtn.style.background = half==='back' ? 'var(--green-700)' : 'none';
+    backBtn.style.color = half==='back' ? '#fff' : 'var(--text-muted)';
+  }
+  const tbody = document.getElementById('gs-hole-tbody');
+  if(!tbody) return;
+  const holeMap = {};
+  for(let h=1;h<=18;h++) holeMap[h]=[];
+  DATA.greenSpeeds.forEach(s=>{
+    let holes=[];
+    if(s.holes==='All 18') holes=Array.from({length:18},(_,i)=>i+1);
+    else if(s.holes==='Front 9') holes=[1,2,3,4,5,6,7,8,9];
+    else if(s.holes==='Back 9') holes=[10,11,12,13,14,15,16,17,18];
+    else holes=s.holes.split(',').map(x=>parseInt(x.trim())).filter(n=>n>=1&&n<=18);
+    holes.forEach(h=>{ if(holeMap[h]) holeMap[h].push(s.val); });
+  });
+  const range = half==='front' ? [1,9] : [10,18];
+  let html='';
+  for(let h=range[0];h<=range[1];h++){
+    const arr=holeMap[h];
+    if(!arr.length){ html+='<tr><td>Hole '+h+'</td><td colspan="3" style="color:var(--text-muted);">No data</td></tr>'; continue; }
+    const latest=arr[0];
+    const avg=(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+    html+='<tr onclick="goToStimpHole('+h+')" style="cursor:pointer;" onmouseover="this.style.background=\'var(--green-50)\'" onmouseout="this.style.background=\'\'"><td style="color:var(--green-700);font-weight:700;">Hole '+h+'</td><td><strong>'+latest+'</strong></td><td>'+avg+'</td><td>'+arr.length+'</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+let gsChartTimeframe = 30;
+
+function renderSpeedChart(){
+  const sel = document.getElementById('gs-timeframe');
+  if(sel) gsChartTimeframe = parseInt(sel.value);
+  const canvas = document.getElementById('gs-chart');
+  const empty = document.getElementById('gs-chart-empty');
+  if(!canvas) return;
+
+  // Filter readings by timeframe - parse dates like "May 27", "Apr 14" etc
+  const now = new Date();
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - gsChartTimeframe);
+
+  // Since dates are stored as "Apr 14" strings, use index as proxy
+  // Readings are newest-first, so reverse for chronological display
+  const readings = [...DATA.greenSpeeds].reverse();
+
+  // For YTD / longer ranges show all if not enough dated data
+  const filtered = gsChartTimeframe >= 365
+    ? readings
+    : readings.slice(-Math.min(readings.length, Math.ceil(gsChartTimeframe / 1)));
+
+  if(filtered.length < 2){
+    canvas.style.display = 'none';
+    if(empty) empty.style.display = 'block';
+    return;
+  }
+  canvas.style.display = 'block';
+  if(empty) empty.style.display = 'none';
+
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 36;
+  const H = 180;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const vals = filtered.map(s=>s.val);
+  const labels = filtered.map(s=>s.date);
+  const minV = Math.max(0, Math.min(...vals) - 0.5);
+  const maxV = Math.min(14, Math.max(...vals) + 0.5);
+  const pad = {top:16, right:16, bottom:32, left:40};
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  const xPos = i => pad.left + (i / (vals.length-1)) * cW;
+  const yPos = v => pad.top + cH - ((v - minV) / (maxV - minV)) * cH;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(80,100,60,0.08)';
+  ctx.lineWidth = 1;
+  const steps = 4;
+  for(let i=0;i<=steps;i++){
+    const v = minV + (maxV-minV)*(i/steps);
+    const y = yPos(v);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left+cW, y); ctx.stroke();
+    ctx.fillStyle = '#8FA080';
+    ctx.font = '10px DM Sans, system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(1), pad.left-6, y+4);
+  }
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top+cH);
+  grad.addColorStop(0, 'rgba(77,148,37,0.18)');
+  grad.addColorStop(1, 'rgba(77,148,37,0.02)');
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), yPos(vals[0]));
+  for(let i=1;i<vals.length;i++){
+    const cpx = (xPos(i-1)+xPos(i))/2;
+    ctx.bezierCurveTo(cpx, yPos(vals[i-1]), cpx, yPos(vals[i]), xPos(i), yPos(vals[i]));
+  }
+  ctx.lineTo(xPos(vals.length-1), pad.top+cH);
+  ctx.lineTo(xPos(0), pad.top+cH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), yPos(vals[0]));
+  for(let i=1;i<vals.length;i++){
+    const cpx = (xPos(i-1)+xPos(i))/2;
+    ctx.bezierCurveTo(cpx, yPos(vals[i-1]), cpx, yPos(vals[i]), xPos(i), yPos(vals[i]));
+  }
+  ctx.strokeStyle = '#3B7A1B';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Dots
+  vals.forEach((v,i)=>{
+    ctx.beginPath();
+    ctx.arc(xPos(i), yPos(v), 4, 0, Math.PI*2);
+    ctx.fillStyle = '#3B7A1B';
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(xPos(i), yPos(v), 2, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  // X labels — show a few evenly spaced
+  ctx.fillStyle = '#8FA080';
+  ctx.font = '10px DM Sans, system-ui';
+  ctx.textAlign = 'center';
+  const labelStep = Math.max(1, Math.floor(vals.length/5));
+  for(let i=0;i<vals.length;i+=labelStep){
+    ctx.fillText(labels[i], xPos(i), H-8);
+  }
+  // Always show last label
+  if((vals.length-1) % labelStep !== 0){
+    ctx.fillText(labels[vals.length-1], xPos(vals.length-1), H-8);
+  }
 }
 
 function openSpeedEntry(){
@@ -3890,21 +4355,40 @@ function renderScouting(){
   const moderate = DATA.scoutLog.filter(s => s.sev === 'Moderate').length;
   
   return `
-  <div class="fleet-stats">
-    <div class="fs-card"><div class="fs-val" style="color:var(--red-600);">${open}</div><div class="fs-lbl">Open issues</div></div>
-    <div class="fs-card"><div class="fs-val" style="color:var(--amber-600);">${urgent}</div><div class="fs-lbl">Urgent</div></div>
-    <div class="fs-card"><div class="fs-val">${moderate}</div><div class="fs-lbl">Moderate</div></div>
-    <div class="fs-card"><div class="fs-val">3</div><div class="fs-lbl">Trending patterns</div></div>
-  </div>
-  
-  <div class="scout-insights">
-    <div class="scout-insights-hd">✦ AI PATTERN DETECTION</div>
-    <div class="scout-insights-txt">
-      ⚠ <strong>Dollar spot risk elevated</strong> — 4 scouting entries in 7 days on greens 5, 7, 11, 14. Dew point consistently above 55°F. Recommend preventative spray Friday morning.<br>
-      ⚠ <strong>Green 8 — recurring dry spot</strong> — logged 3x in 14 days. Chronic issue, consider wetting agent application.<br>
-      ✓ No insect pressure detected
-    </div>
-  </div>
+  ${(()=>{
+    const patterns = [];
+    const issueCounts = {};
+    DATA.scoutLog.forEach(s=>{
+      const key = s.issue.toLowerCase();
+      if(!issueCounts[key]) issueCounts[key] = {issue:s.issue, holes:[], count:0};
+      issueCounts[key].count++;
+      if(s.holes) s.holes.forEach(h=>{ if(!issueCounts[key].holes.includes(h)) issueCounts[key].holes.push(h); });
+    });
+    Object.values(issueCounts).forEach(g=>{
+      if(g.count >= 2) patterns.push({type:'warn', text:'<strong>'+g.issue+' - recurring</strong> - logged '+g.count+'x'+(g.holes.length?' on greens '+g.holes.join(', '):'')+'. Consider targeted treatment.'});
+    });
+    const holeOpenCounts = {};
+    DATA.scoutLog.filter(s=>s.status!=='Resolved').forEach(s=>{
+      if(s.holes) s.holes.forEach(h=>{ holeOpenCounts[h]=(holeOpenCounts[h]||0)+1; });
+    });
+    Object.entries(holeOpenCounts).forEach(function(entry){ const h=entry[0],c=entry[1]; if(c>=2) patterns.push({type:'warn', text:'<strong>Green '+h+' - multiple open issues</strong> - '+c+' unresolved entries.'}); });
+    const urgentOpen = DATA.scoutLog.filter(s=>s.sev==='Urgent'&&s.status!=='Resolved');
+    if(urgentOpen.length) patterns.push({type:'warn', text:'<strong>'+urgentOpen.length+' urgent issue'+(urgentOpen.length>1?'s':'')+' unresolved</strong> - '+urgentOpen.map(s=>s.issue+(s.hole?' ('+s.hole+')':'')).join(', ')+'.'});
+    const openDisease = DATA.scoutLog.filter(s=>s.category==='disease'&&s.status!=='Resolved');
+    if(!openDisease.length) patterns.push({type:'ok', text:'No active disease pressure detected'});
+    const trendCount = patterns.filter(p=>p.type==='warn').length;
+    const patternsTxt = patterns.length ? patterns.map(p=>(p.type==='warn'?'WARNING: ':'OK: ')+p.text).join('<br>') : 'No patterns detected yet - log scouting observations to start tracking trends.';
+    return '<div class="fleet-stats">'
+      +'<div class="fs-card"><div class="fs-val" style="color:var(--red-600);">'+open+'</div><div class="fs-lbl">Open issues</div></div>'
+      +'<div class="fs-card"><div class="fs-val" style="color:var(--amber-600);">'+urgent+'</div><div class="fs-lbl">Urgent</div></div>'
+      +'<div class="fs-card"><div class="fs-val">'+moderate+'</div><div class="fs-lbl">Moderate</div></div>'
+      +'<div class="fs-card"><div class="fs-val">'+trendCount+'</div><div class="fs-lbl">Trending patterns</div></div>'
+      +'</div>'
+      +'<div class="scout-insights">'
+      +'<div class="scout-insights-hd">✦ PATTERN DETECTION</div>'
+      +'<div class="scout-insights-txt">'+patternsTxt+'</div>'
+      +'</div>';
+  })()}
   
   <div class="card">
     <div class="card-head"><div class="card-title">Scouting log</div><button class="btn-green" onclick="openScoutModal()">+ Log issue</button></div>
@@ -4136,12 +4620,201 @@ function openEquipmentDetail(id){
     <div class="sp-section">
       <div class="sp-section-hd">Actions</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        <button class="btn-green">+ Create work order</button>
-        <button class="btn-outline">✏ Edit equipment</button>
-        <button class="btn-outline">Update hours</button>
+        <button class="btn-green" onclick="openCreateWOFromEquip('${e.id}')">+ Create work order</button>
+        <button class="btn-outline" onclick="openEditEquipment('${e.id}')">✏ Edit equipment</button>
+        <button class="btn-outline" onclick="openUpdateHours('${e.id}')">Update hours</button>
       </div>
     </div>
   `);
+}
+
+function openUpdateHours(id){
+  const e = DATA.equipment.find(x=>x.id===id);
+  if(!e) return;
+  const html = `
+  <div class="modal-overlay open" id="hours-modal">
+    <div class="modal-box" style="width:320px;">
+      <div class="modal-title">Update hours — ${e.nickname}</div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Current hours: <strong>${e.hours}</strong></div>
+      <div class="modal-field">
+        <label>New hour reading</label>
+        <input type="number" id="uh-val" step="0.1" min="${e.hours}" placeholder="${e.hours}" value="${e.hours}">
+        <span style="font-size:10px;color:var(--text-muted);margin-top:4px;display:block;">Enter the current meter reading from the machine.</span>
+      </div>
+      <div class="modal-field">
+        <label>Notes (optional)</label>
+        <input type="text" id="uh-notes" placeholder="e.g. After greens mow">
+      </div>
+      <div class="modal-btns">
+        <button class="btn-outline" onclick="closeModal('hours-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
+        <button class="btn-green" onclick="saveHours('${e.id}')">Save</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-container').innerHTML = html;
+  setTimeout(()=>{const i=document.getElementById('uh-val');if(i){i.focus();i.select();}},50);
+}
+
+function saveHours(id){
+  const val = parseFloat(document.getElementById('uh-val').value);
+  if(isNaN(val)) return showToast('Enter a valid hour reading', true);
+  const e = DATA.equipment.find(x=>x.id===id);
+  if(!e) return;
+  if(val < e.hours && !confirm('New reading ('+val+') is less than current hours ('+e.hours+'). Continue?')) return;
+  const added = Math.max(0, val - e.hours);
+  e.hours = val;
+  e.hoursMonth = (e.hoursMonth||0) + added;
+  e.lastUsed = MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate()+' · hours updated';
+  lsSave();
+  showToast(e.nickname+' updated to '+val+' hrs');
+  closeModal('hours-modal');
+  document.getElementById('modal-container').innerHTML='';
+  closeSidePanel();
+  renderMain();
+}
+
+function openCreateWOFromEquip(id){
+  const e = DATA.equipment.find(x=>x.id===id);
+  if(!e) return;
+  const html = `
+  <div class="modal-overlay open" id="wo-quick-modal">
+    <div class="modal-box">
+      <div class="modal-title">+ Create work order</div>
+      <div class="modal-field"><label>Machine</label><input type="text" id="wq-machine" value="${e.nickname}" readonly style="background:var(--bg-field);"></div>
+      <div class="modal-field"><label>Issue / Task</label><input type="text" id="wq-issue" placeholder="e.g. Oil change, reel service..."></div>
+      <div class="modal-row">
+        <div class="modal-field"><label>Priority</label>
+          <select id="wq-priority"><option>Low</option><option selected>Medium</option><option>High</option><option>Urgent</option></select>
+        </div>
+        <div class="modal-field"><label>Assigned to</label>
+          <select id="wq-assign"><option>Unassigned</option>${DATA.crew.map(c=>'<option>'+c+'</option>').join('')}</select>
+        </div>
+      </div>
+      <div class="modal-field"><label>Est. hours</label><input type="number" id="wq-hrs" step="0.25" placeholder="1.0"></div>
+      <div class="modal-btns">
+        <button class="btn-outline" onclick="closeModal('wo-quick-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
+        <button class="btn-green" onclick="saveQuickWO('${e.id}')">Create</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-container').innerHTML = html;
+  setTimeout(()=>{document.getElementById('wq-issue').focus();},50);
+}
+
+function saveQuickWO(id){
+  const e = DATA.equipment.find(x=>x.id===id);
+  if(!e) return;
+  const issue = document.getElementById('wq-issue').value.trim();
+  if(!issue) return showToast('Enter an issue or task', true);
+  DATA.workOrders.unshift({
+    id: 'wo'+Date.now(),
+    machine: e.nickname,
+    issue,
+    priority: document.getElementById('wq-priority').value,
+    assigned: document.getElementById('wq-assign').value,
+    status: 'open',
+    created: MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(),
+    parts: [],
+    expectedHrs: parseFloat(document.getElementById('wq-hrs').value)||1
+  });
+  lsSave();
+  showToast('Work order created');
+  closeModal('wo-quick-modal');
+  document.getElementById('modal-container').innerHTML='';
+  closeSidePanel();
+  renderMain();
+}
+
+function openEditEquipment(id){
+  const e = DATA.equipment.find(x=>x.id===id);
+  if(!e) return;
+  const html = `
+  <div class="modal-overlay open" id="edit-eq-modal">
+    <div class="modal-box wide">
+      <div class="modal-title">✏ Edit — ${e.nickname}</div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" onclick="switchEqTab(this,'eeq-basic')">Basic Info</button>
+        <button class="modal-tab" onclick="switchEqTab(this,'eeq-hours')">Hours</button>
+        <button class="modal-tab" onclick="switchEqTab(this,'eeq-danger')">Danger Zone</button>
+      </div>
+      <div class="modal-tab-content active" id="eeq-basic">
+        <div class="modal-field"><label>Nickname / ID</label><input type="text" id="eeq-nick" value="${e.nickname}"></div>
+        <div class="modal-row">
+          <div class="modal-field"><label>Brand</label><input type="text" id="eeq-brand" value="${e.brand||''}"></div>
+          <div class="modal-field"><label>Model</label><input type="text" id="eeq-model" value="${e.model||''}"></div>
+        </div>
+        <div class="modal-row">
+          <div class="modal-field"><label>Year</label><input type="number" id="eeq-year" value="${e.year||''}"></div>
+          <div class="modal-field"><label>Serial</label><input type="text" id="eeq-serial" value="${e.serial||''}"></div>
+        </div>
+        <div class="modal-field"><label>Status</label>
+          <select id="eeq-status">
+            <option value="active" ${e.status==='active'?'selected':''}>Active</option>
+            <option value="out_of_service" ${e.status==='out_of_service'?'selected':''}>Out of service</option>
+            <option value="retired" ${e.status==='retired'?'selected':''}>Retired</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-tab-content" id="eeq-hours">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">Current hours: <strong>${e.hours}</strong></div>
+        <div class="modal-field">
+          <label>Update hour reading</label>
+          <input type="number" id="eeq-hours" step="0.1" value="${e.hours}" placeholder="${e.hours}">
+        </div>
+        <div class="modal-field">
+          <label>Last used note</label>
+          <input type="text" id="eeq-lastused" value="${e.lastUsed||''}" placeholder="e.g. Today · mowed greens">
+        </div>
+      </div>
+      <div class="modal-tab-content" id="eeq-danger">
+        <div style="background:var(--red-100);border:1px solid #F5BFBB;border-radius:10px;padding:14px 16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--red-600);margin-bottom:6px;">Remove equipment</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">This permanently removes ${e.nickname} from your fleet. Work orders and service history are kept.</div>
+          <button class="btn-red" onclick="deleteEquipment('${e.id}')">Remove from fleet</button>
+        </div>
+      </div>
+      <div class="modal-btns">
+        <button class="btn-outline" onclick="closeModal('edit-eq-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
+        <button class="btn-green" onclick="saveEditEquipment('${e.id}')">Save changes</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-container').innerHTML = html;
+  setTimeout(()=>{document.getElementById('eeq-nick').focus();},50);
+}
+
+function saveEditEquipment(id){
+  const e = DATA.equipment.find(x=>x.id===id);
+  if(!e) return;
+  const nick = document.getElementById('eeq-nick').value.trim();
+  if(!nick) return showToast('Nickname required', true);
+  e.nickname  = nick;
+  e.brand     = document.getElementById('eeq-brand').value.trim();
+  e.model     = document.getElementById('eeq-model').value.trim();
+  e.year      = parseInt(document.getElementById('eeq-year').value) || e.year;
+  e.serial    = document.getElementById('eeq-serial').value.trim();
+  e.status    = document.getElementById('eeq-status').value;
+  const newHrs = parseFloat(document.getElementById('eeq-hours').value);
+  if(!isNaN(newHrs)) e.hours = newHrs;
+  const lastUsed = document.getElementById('eeq-lastused').value.trim();
+  if(lastUsed) e.lastUsed = lastUsed;
+  lsSave();
+  showToast(nick+' updated');
+  closeModal('edit-eq-modal');
+  document.getElementById('modal-container').innerHTML='';
+  closeSidePanel();
+  renderMain();
+}
+
+function deleteEquipment(id){
+  if(!confirm('Remove this equipment from your fleet?')) return;
+  DATA.equipment = DATA.equipment.filter(e=>e.id!==id);
+  lsSave();
+  showToast('Equipment removed');
+  closeModal('edit-eq-modal');
+  document.getElementById('modal-container').innerHTML='';
+  closeSidePanel();
+  renderMain();
 }
 
 function openEquipmentModal(){
@@ -4159,16 +4832,16 @@ function openEquipmentModal(){
       <div class="modal-tab-content active" id="eq-basic">
         <div class="modal-field"><label>Nickname / ID</label><input type="text" id="em-nick" placeholder="e.g. Triplex Mower #2"></div>
         <div class="modal-row">
-          <div class="modal-field"><label>Brand</label><input type="text" placeholder="Toro"></div>
-          <div class="modal-field"><label>Model</label><input type="text" placeholder="Greensmaster 3150-Q"></div>
+          <div class="modal-field"><label>Brand</label><input type="text" id="em-brand" placeholder="Toro"></div>
+          <div class="modal-field"><label>Model</label><input type="text" id="em-model" placeholder="Greensmaster 3150-Q"></div>
         </div>
         <div class="modal-row">
-          <div class="modal-field"><label>Year</label><input type="number" placeholder="2022"></div>
-          <div class="modal-field"><label>Serial</label><input type="text" placeholder="TGM-3150-22045"></div>
+          <div class="modal-field"><label>Year</label><input type="number" id="em-year" placeholder="2022"></div>
+          <div class="modal-field"><label>Serial</label><input type="text" id="em-serial" placeholder="TGM-3150-22045"></div>
         </div>
         <div class="modal-row">
-          <div class="modal-field"><label>Asset tag</label><input type="text" placeholder="Internal tag #"></div>
-          <div class="modal-field"><label>Status</label><select><option>Active</option><option>Out of service</option><option>Retired</option></select></div>
+          <div class="modal-field"><label>Asset tag</label><input type="text" id="em-tag" placeholder="Internal tag #"></div>
+          <div class="modal-field"><label>Status</label><select id="em-status"><option>active</option><option>out_of_service</option><option>retired</option></select></div>
         </div>
         <div class="modal-field"><label>Photo</label><div style="background:var(--bg-field);border:1px dashed var(--border-medium);border-radius:8px;padding:16px;text-align:center;font-size:11px;color:var(--text-muted);">📷 Photo upload available after database migration</div></div>
       </div>
@@ -4184,7 +4857,7 @@ function openEquipmentModal(){
         </div>
       </div>
       <div class="modal-tab-content" id="eq-hours">
-        <div class="modal-field"><label>Current hours (required)</label><input type="number" step="0.1" placeholder="38.2"></div>
+        <div class="modal-field"><label>Current hours (required)</label><input type="number" id="em-hours" step="0.1" placeholder="38.2"></div>
         <div class="modal-field"><label>Hours reading date</label><input type="date"></div>
         <div class="modal-field"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" checked> Auto-update hours from Job Board</label><div style="font-size:10px;color:var(--text-muted);margin-top:4px;">When a job is marked complete with this machine assigned, hours auto-increment by actual time logged.</div></div>
       </div>
@@ -4215,13 +4888,42 @@ function openEquipmentModal(){
       </div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('eq-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="showToast('Equipment added');closeModal('eq-modal');document.getElementById('modal-container').innerHTML='';">Add equipment</button>
+        <button class="btn-green" onclick="saveEquipment()">Add equipment</button>
       </div>
     </div>
   </div>`;
   document.getElementById('modal-container').innerHTML = html;
   setTimeout(()=>{document.getElementById('em-nick').focus();},50);
 }
+function saveEquipment(){
+  const nick = document.getElementById('em-nick').value.trim();
+  if(!nick) return showToast('Enter a nickname / ID', true);
+  const brand  = document.getElementById('em-brand')?.value.trim() || '';
+  const model  = document.getElementById('em-model')?.value.trim() || '';
+  const year   = parseInt(document.getElementById('em-year')?.value) || new Date().getFullYear();
+  const serial = document.getElementById('em-serial')?.value.trim() || '';
+  const hours  = parseFloat(document.getElementById('em-hours')?.value) || 0;
+  const status = document.getElementById('em-status')?.value || 'active';
+  const newEq = {
+    id: 'eq'+Date.now(),
+    nickname: nick,
+    brand, model, year, serial,
+    hours, hoursMonth: hours,
+    status,
+    alert: 'Running normally',
+    alertType: 'green',
+    nextService: '—',
+    lastUsed: '—',
+    services: []
+  };
+  DATA.equipment.push(newEq);
+  lsSave();
+  showToast(nick+' added');
+  closeModal('eq-modal');
+  document.getElementById('modal-container').innerHTML = '';
+  renderMain();
+}
+
 function switchEqTab(btn, target){
   btn.parentElement.querySelectorAll('.modal-tab').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
@@ -4698,8 +5400,22 @@ function renderSvcHistory(){
   return `
   <div class="fleet-stats" style="grid-template-columns:repeat(3,1fr);">
     <div class="fs-card"><div class="fs-val">${thisMonth}</div><div class="fs-lbl">Services this month</div></div>
-    <div class="fs-card"><div class="fs-val">$1,240</div><div class="fs-lbl">Cost YTD</div></div>
-    <div class="fs-card"><div class="fs-val">$207</div><div class="fs-lbl">Avg per machine</div></div>
+    <div class="fs-card"><div class="fs-val">${(()=>{
+      const total = DATA.serviceHistory.reduce((sum,h)=>{
+        const n = parseFloat((h.cost||'').replace(/[$,]/g,''));
+        return sum + (isNaN(n)?0:n);
+      }, 0);
+      return total ? '$'+total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    })()}</div><div class="fs-lbl">Cost all time</div></div>
+    <div class="fs-card"><div class="fs-val">${(()=>{
+      if(!DATA.serviceHistory.length || !DATA.equipment.length) return '—';
+      const total = DATA.serviceHistory.reduce((sum,h)=>{
+        const n = parseFloat((h.cost||'').replace(/[$,]/g,''));
+        return sum + (isNaN(n)?0:n);
+      }, 0);
+      const avg = total / DATA.equipment.length;
+      return avg ? '$'+avg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    })()}</div><div class="fs-lbl">Avg per machine</div></div>
   </div>
   
   <div class="wo-toolbar">
@@ -4902,35 +5618,63 @@ function renderFertLog(){
 }
 function openFertModal(){ showToast('Fertilizer log — use same flow as Spray'); }
 
+let selectedStimpHole = null;
+
+function goToStimpHole(hole){
+  selectedStimpHole = hole;
+  navTo('records', 'stimp');
+}
+
 function renderStimpHistory(){
+  // Filter readings if coming from hole click
+  const filterHole = selectedStimpHole;
+  const filteredSpeeds = filterHole ? DATA.greenSpeeds.filter(s=>{
+    if(s.holes==='All 18') return true;
+    if(s.holes==='Front 9') return filterHole<=9;
+    if(s.holes==='Back 9') return filterHole>=10;
+    return s.holes.split(',').map(x=>parseInt(x.trim())).includes(filterHole);
+  }) : DATA.greenSpeeds;
+
   return `
   <div class="card">
-    <div class="card-head"><div class="card-title">Stimpmeter History</div><button class="btn-green" onclick="openSpeedEntry()">+ Log reading</button></div>
+    <div class="card-head">
+      <div>
+        <div class="card-title">Stimpmeter History${filterHole?' — Hole '+filterHole:''}</div>
+        ${filterHole ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Showing readings that include Hole '+filterHole+'</div>' : ''}
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        ${filterHole ? '<button class="btn-outline" onclick="selectedStimpHole=null;renderMain();">✕ Clear filter</button>' : ''}
+        <button class="btn-green" onclick="openSpeedEntry()">+ Log reading</button>
+      </div>
+    </div>
     <div class="card-body">
-      ${DATA.greenSpeeds.map(s=>{
+      ${filteredSpeeds.length ? filteredSpeeds.map(s=>{
         const pct = ((s.val-7)/(13-7))*100;
-        return `
-          <div class="gs-log-row">
-            <div class="gs-log-date">${s.date}</div>
-            <div class="gs-log-val">${s.val}</div>
-            <div class="gs-log-hole">${s.holes}</div>
-            <div class="gs-log-bar-bg"><div class="gs-log-bar-fill" style="width:${pct}%;"></div></div>
-            <div class="gs-log-note">${s.note}</div>
-            <div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div>
-          </div>
-        `;
-      }).join('')}
+        return '<div class="gs-log-row">'
+          +'<div class="gs-log-date">'+s.date+'</div>'
+          +'<div class="gs-log-val">'+s.val+'</div>'
+          +'<div class="gs-log-hole">'+s.holes+'</div>'
+          +'<div class="gs-log-bar-bg"><div class="gs-log-bar-fill" style="width:'+pct+'%;"></div></div>'
+          +'<div class="gs-log-note">'+s.note+'</div>'
+          +'<div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div>'
+          +'</div>';
+      }).join('') : '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">No readings found for Hole '+filterHole+'</div>'}
     </div>
   </div>
   
   <div class="card">
     <div class="card-head"><div class="card-title">Trends</div></div>
     <div class="card-body">
-      <div class="three-col">
-        <div class="stat-block"><div class="stat-val">10.2</div><div class="stat-lbl">Today</div></div>
-        <div class="stat-block"><div class="stat-val">9.8</div><div class="stat-lbl">30-day avg</div></div>
-        <div class="stat-block"><div class="stat-val">9.7</div><div class="stat-lbl">Season avg</div></div>
-      </div>
+      ${(()=>{
+        const vals = DATA.greenSpeeds.map(s=>s.val);
+        const latest = vals.length ? vals[0] : null;
+        const avg30 = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : null;
+        return '<div class="three-col">'
+          +'<div class="stat-block"><div class="stat-val">'+(latest||'—')+'</div><div class="stat-lbl">Latest</div></div>'
+          +'<div class="stat-block"><div class="stat-val">'+(avg30||'—')+'</div><div class="stat-lbl">All-time avg</div></div>'
+          +'<div class="stat-block"><div class="stat-val">'+vals.length+'</div><div class="stat-lbl">Total readings</div></div>'
+          +'</div>';
+      })()}
     </div>
   </div>
   `;
@@ -4978,22 +5722,62 @@ function renderSettings(){
 function renderSettingsCourseInfo(){
   return `
   <div class="card">
+    <div class="card-head"><div class="card-title">Superintendent</div></div>
+    <div class="card-body">
+      <div class="modal-row">
+        <div class="modal-field"><label>First name</label><input type="text" id="ci-first" value="${DATA.superFirstName||''}" placeholder="e.g. John"></div>
+        <div class="modal-field"><label>Last name</label><input type="text" id="ci-last" value="${DATA.superLastName||''}" placeholder="e.g. Smith"></div>
+      </div>
+      <div class="modal-btns" style="margin-top:0;"><button class="btn-green" onclick="saveCourseInfo()">Save</button></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-head"><div class="card-title">Course Info</div></div>
     <div class="card-body">
       <div class="modal-row">
-        <div class="modal-field"><label>Course name</label><input type="text" value="${DATA.courseName}"></div>
-        <div class="modal-field"><label>ZIP code</label><input type="text" value="${DATA.zipCode}" placeholder="Used for weather API"></div>
+        <div class="modal-field"><label>Course name</label><input type="text" id="ci-course" value="${DATA.courseName}"></div>
+        <div class="modal-field"><label>ZIP code</label><input type="text" id="ci-zip" value="${DATA.zipCode||''}" placeholder="Used for weather data"></div>
       </div>
-      <div class="modal-field"><label>Address</label><input type="text" placeholder="Street address"></div>
+      <div class="modal-field"><label>Address</label><input type="text" id="ci-addr" value="${DATA.courseAddress||''}" placeholder="Street address"></div>
       <div class="modal-row">
-        <div class="modal-field"><label>City</label><input type="text" placeholder="City"></div>
-        <div class="modal-field"><label>State</label><input type="text" placeholder="MI"></div>
+        <div class="modal-field"><label>City</label><input type="text" id="ci-city" value="${DATA.courseCity||''}" placeholder="City"></div>
+        <div class="modal-field"><label>State</label><input type="text" id="ci-state" value="${DATA.courseState||''}" placeholder="MI"></div>
       </div>
-      <div class="modal-field"><label>Time zone</label><select><option>Eastern (EST/EDT)</option><option>Central (CST/CDT)</option><option>Mountain (MST/MDT)</option><option>Pacific (PST/PDT)</option></select></div>
-      <div class="modal-btns"><button class="btn-green" onclick="showToast('Saved')">Save changes</button></div>
+      <div class="modal-field"><label>Time zone</label>
+        <select id="ci-tz">
+          <option ${(DATA.timeZone||'Eastern')==='Eastern'?'selected':''}>Eastern (EST/EDT)</option>
+          <option ${DATA.timeZone==='Central'?'selected':''}>Central (CST/CDT)</option>
+          <option ${DATA.timeZone==='Mountain'?'selected':''}>Mountain (MST/MDT)</option>
+          <option ${DATA.timeZone==='Pacific'?'selected':''}>Pacific (PST/PDT)</option>
+        </select>
+      </div>
+      <div class="modal-btns"><button class="btn-green" onclick="saveCourseInfo()">Save changes</button></div>
     </div>
   </div>
   `;
+}
+
+function saveCourseInfo(){
+  const first = document.getElementById('ci-first')?.value.trim();
+  const last  = document.getElementById('ci-last')?.value.trim();
+  const course = document.getElementById('ci-course')?.value.trim();
+  const zip   = document.getElementById('ci-zip')?.value.trim();
+  const addr  = document.getElementById('ci-addr')?.value.trim();
+  const city  = document.getElementById('ci-city')?.value.trim();
+  const state = document.getElementById('ci-state')?.value.trim();
+  if(first !== undefined) DATA.superFirstName = first;
+  if(last  !== undefined) DATA.superLastName  = last;
+  if(course) DATA.courseName = course;
+  if(zip)    DATA.zipCode    = zip;
+  if(addr)   DATA.courseAddress = addr;
+  if(city)   DATA.courseCity    = city;
+  if(state)  DATA.courseState   = state;
+  lsSave();
+  // Update topbar course badge
+  const badge = document.getElementById('courseBadge');
+  if(badge && course) badge.textContent = course;
+  showToast('Settings saved');
 }
 
 function renderSettingsEmployees(){
@@ -5197,4 +5981,4 @@ window.__fairwayInit = init;
 
 </script>
 </body>
-</html>
+</html>mowed ${((DATA.mowHeights?.greens||110)/1000).toFixed(3)}\" today. ${hole===7?'Fungicide application scheduled Friday. ':''}Pin ${DATA.pins&&DATA.pins[hole-1]?DATA.pins[hole-1].position:'Center'}. Green speed ${DATA.greenSpeeds&&DATA.greenSpeeds.length?DATA.greenSpeeds[0].val:'—'} stimp. Irrigation normal last night.
