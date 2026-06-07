@@ -353,7 +353,21 @@ table.jb-table,table.hw-log-table,table.spray-table,table.mow-table,table.scout-
 .spot-ok{background:var(--green-500);}
 .spot-wet{background:var(--blue-600);}
 .spot-none{background:#ddd;opacity:0.5;}
-.moist-entry-row{display:grid;grid-template-columns:90px repeat(5,1fr) 60px auto;gap:6px;align-items:center;padding:8px;background:var(--bg-field);border-radius:8px;margin-bottom:6px;}
+.moist-entry-row{display:grid;grid-template-columns:90px repeat(5,1fr) 60px 110px auto;gap:6px;align-items:center;padding:8px;background:var(--bg-field);border-radius:8px;margin-bottom:2px;}
+.moist-date-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;background:var(--bg-field);border-radius:var(--radius-md);border:1px solid var(--border);}
+.moist-date-lbl{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-right:4px;white-space:nowrap;}
+.moist-date-pill{padding:3px 11px;font-size:11px;font-weight:600;border-radius:20px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;font-family:var(--font);transition:all .14s;white-space:nowrap;}
+.moist-date-pill:hover{border-color:var(--green-500);color:var(--green-700);}
+.moist-date-pill.active{background:var(--green-700);color:#fff;border-color:var(--green-700);}
+.moist-history-panel{background:var(--bg-field);border-radius:0 0 8px 8px;margin-bottom:6px;border:1px solid var(--border);border-top:none;overflow:hidden;}
+.moist-hist-table{width:100%;border-collapse:collapse;font-size:11px;}
+.moist-hist-table th{padding:7px 10px;text-align:left;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;background:var(--bg-card);border-bottom:1px solid var(--border);letter-spacing:.04em;}
+.moist-hist-table td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.moist-hist-table tr:last-child td{border-bottom:none;}
+.moist-hist-table tr.moist-hist-latest td{background:rgba(78,148,37,0.04);}
+.moist-latest-badge{background:var(--green-100);color:var(--green-700);font-size:8px;padding:1px 5px;border-radius:4px;font-weight:700;margin-left:4px;vertical-align:middle;}
+.moist-expand-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:600;color:var(--text-secondary);cursor:pointer;font-family:var(--font);transition:all .14s;white-space:nowrap;}
+.moist-expand-btn:hover,.moist-expand-btn.open{background:var(--green-50);border-color:var(--green-400);color:var(--green-700);}
 .moist-entry-hole{font-size:12px;font-weight:700;color:var(--text-primary);}
 .moist-spot-input{padding:6px 8px;border-radius:6px;border:1px solid var(--border-medium);font-size:12px;background:#fff;color:var(--text-primary);font-family:var(--font);text-align:center;width:100%;}
 .moist-spot-lbl{font-size:8px;color:var(--text-muted);text-align:center;text-transform:uppercase;font-weight:700;letter-spacing:.05em;}
@@ -1002,6 +1016,8 @@ window.handleLogout = handleLogout;
 /* ─── GLOBAL STATE ─── */
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let moistFilterDate = 'latest';
+let expandedMoistHoles = new Set();
 const DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -1058,14 +1074,14 @@ const DATA = {
     {date:'2026-04-25',title:'Fertilizer application — greens',time:'6:00',cat:'chemical'}
   ],
   
-  // 5-spot moisture data — front/middle/back/left/right
+  // 5-spot moisture data — readings array per hole, newest first
   moisture: [
-    {hole:1,spots:{front:25,middle:24,back:26,left:23,right:24},ts:'Apr 17 · 6:02am',notes:''},
-    {hole:2,spots:{front:26,middle:25,back:25,left:24,right:25},ts:'Apr 17 · 6:03am',notes:''},
-    {hole:3,spots:{front:24,middle:23,back:25,left:22,right:24},ts:'Apr 17 · 6:04am',notes:''},
-    {hole:7,spots:{front:17,middle:22,back:24,left:20,right:23},ts:'Apr 17 · 6:08am',notes:'Dollar spot area, front drying fast'},
-    {hole:8,spots:{front:18,middle:22,back:24,left:19,right:22},ts:'Apr 17 · 6:10am',notes:'Recurring dry spot NW corner'},
-    {hole:14,spots:{front:20,middle:21,back:23,left:19,right:21},ts:'Apr 17 · 6:14am',notes:'Wind exposure'}
+    {hole:1,readings:[{spots:{front:25,middle:24,back:26,left:23,right:24},ts:'Apr 17 · 6:02am',notes:'',isoDate:'2024-04-17'},{spots:{front:23,middle:22,back:24,left:21,right:23},ts:'Apr 16 · 6:04am',notes:'',isoDate:'2024-04-16'}]},
+    {hole:2,readings:[{spots:{front:26,middle:25,back:25,left:24,right:25},ts:'Apr 17 · 6:03am',notes:'',isoDate:'2024-04-17'},{spots:{front:24,middle:24,back:25,left:23,right:24},ts:'Apr 16 · 6:05am',notes:'',isoDate:'2024-04-16'}]},
+    {hole:3,readings:[{spots:{front:24,middle:23,back:25,left:22,right:24},ts:'Apr 17 · 6:04am',notes:'',isoDate:'2024-04-17'}]},
+    {hole:7,readings:[{spots:{front:17,middle:22,back:24,left:20,right:23},ts:'Apr 17 · 6:08am',notes:'Dollar spot area, front drying fast',isoDate:'2024-04-17'},{spots:{front:19,middle:23,back:25,left:21,right:24},ts:'Apr 16 · 6:09am',notes:'',isoDate:'2024-04-16'},{spots:{front:20,middle:24,back:26,left:22,right:25},ts:'Apr 15 · 6:07am',notes:'',isoDate:'2024-04-15'}]},
+    {hole:8,readings:[{spots:{front:18,middle:22,back:24,left:19,right:22},ts:'Apr 17 · 6:10am',notes:'Recurring dry spot NW corner',isoDate:'2024-04-17'},{spots:{front:19,middle:22,back:25,left:18,right:22},ts:'Apr 16 · 6:11am',notes:'NW still dry',isoDate:'2024-04-16'},{spots:{front:20,middle:23,back:25,left:19,right:23},ts:'Apr 15 · 6:09am',notes:'',isoDate:'2024-04-15'}]},
+    {hole:14,readings:[{spots:{front:20,middle:21,back:23,left:19,right:21},ts:'Apr 17 · 6:14am',notes:'Wind exposure',isoDate:'2024-04-17'},{spots:{front:21,middle:22,back:24,left:20,right:22},ts:'Apr 16 · 6:15am',notes:'',isoDate:'2024-04-16'}]}
   ],
   
   handWaterLog: [
@@ -1387,7 +1403,7 @@ function getDynamicBadge(id){
     case 'scouting':    { const c=DATA.scoutLog.filter(s=>s.status!=='Resolved').length; return c?{type:'amber',count:c}:null; }
     case 'workorders':  { const c=DATA.workOrders.filter(w=>w.status!=='complete').length; return c?{type:'red',count:c}:null; }
     case 'svc-schedule':{ const c=DATA.equipment.filter(e=>e.alertType==='amber'||e.alertType==='red').length; return c?{type:'amber',count:c}:null; }
-    case 'irr-today':   { const c=DATA.moisture.filter(m=>{const vals=Object.values(m.spots).filter(v=>v!=null);return vals.length&&Math.min(...vals)<22;}).length; return c?{type:'red',count:c}:null; }
+    case 'irr-today':   { const c=DATA.moisture.filter(m=>{const r=m.readings&&m.readings[0];const vals=r?Object.values(r.spots).filter(v=>v!=null):[];return vals.length&&Math.min(...vals)<22;}).length; return c?{type:'red',count:c}:null; }
     default: return null;
   }
 }
@@ -1482,7 +1498,7 @@ function renderMain(){
 /* ═══ TODAY → OVERVIEW ═══ */
 function renderTodayOverview(){
   // Count open scouting, moisture alerts, etc.
-  const moistUrg = DATA.moisture.filter(m => Math.min(...Object.values(m.spots)) < 20).length;
+  const moistUrg = DATA.moisture.filter(m => { const r=m.readings&&m.readings[0]; return r&&Object.values(r.spots).filter(v=>v!=null).length&&Math.min(...Object.values(r.spots).filter(v=>v!=null))<20; }).length;
   const scoutOpen = DATA.scoutLog.filter(s => s.status !== 'Resolved').length;
   const scoutUrg = DATA.scoutLog.filter(s => s.sev === 'Urgent').length;
   const scoutHigh = DATA.scoutLog.filter(s => s.sev === 'High' || s.sev === 'Moderate').length;
@@ -1571,7 +1587,7 @@ function renderTodayOverview(){
       <div class="ov-stat">${moistUrg}</div>
       <div class="ov-sub">Spots below threshold</div>
       ${(()=>{
-        const urgHoles = DATA.moisture.filter(m=>Object.values(m.spots).filter(v=>v!=null).some(v=>v<20)).map(m=>'Green '+m.hole);
+        const urgHoles = DATA.moisture.filter(m=>{const r=m.readings&&m.readings[0];return r&&Object.values(r.spots).filter(v=>v!=null).some(v=>v<20);}).map(m=>'Green '+m.hole);
         return urgHoles.length
           ? '<div class="ov-alert ov-alert-red">'+urgHoles.slice(0,3).join(' · ')+(urgHoles.length>3?' +more':'')+'</div>'
           : '<div class="ov-alert ov-alert-green">All greens OK</div>';
@@ -3082,7 +3098,7 @@ function saveEvent(){
 /* ═══ IRRIGATION AGENT — 3 subsections ═══ */
 function renderIrrToday(){
   // Compute hand-water alerts from moisture 5-spot data
-  const urgGreens = DATA.moisture.filter(m => Math.min(...Object.values(m.spots)) < 22);
+  const urgGreens = DATA.moisture.filter(m => { const r=m.readings&&m.readings[0]; const vals=r?Object.values(r.spots).filter(v=>v!=null):[]; return vals.length&&Math.min(...vals)<22; });
   
   return `
   <div class="irr-brief" onclick="openIrrBriefing()">
@@ -3096,8 +3112,10 @@ function renderIrrToday(){
     ${urgGreens.length>0?`
       <div class="irr-hw-grid">
         ${urgGreens.map(m=>{
-          const low = Math.min(...Object.values(m.spots));
-          const lowSpot = Object.keys(m.spots).find(k => m.spots[k] === low);
+          const r = m.readings[0];
+          const vals = Object.values(r.spots).filter(v=>v!=null);
+          const low = Math.min(...vals);
+          const lowSpot = Object.keys(r.spots).find(k => r.spots[k] === low);
           return `
             <div class="irr-hw-card" onclick="openMoistureDetail(${m.hole})">
               <div class="irr-hw-hole">GREEN ${m.hole}</div>
@@ -3218,48 +3236,52 @@ function markWatered(hole){
     notes: 'Auto-logged from alert'
   });
   // Remove from moisture urgents (simulate)
-  const m = DATA.moisture.find(mm=>mm.hole===hole);
-  if(m){
-    Object.keys(m.spots).forEach(k=>{ if(m.spots[k] < 22) m.spots[k] = 24; });
+  const mEntry = DATA.moisture.find(mm=>mm.hole===hole);
+  if(mEntry && mEntry.readings && mEntry.readings[0]){
+    Object.keys(mEntry.readings[0].spots).forEach(k=>{ if(mEntry.readings[0].spots[k] != null && mEntry.readings[0].spots[k] < 22) mEntry.readings[0].spots[k] = 24; });
   }
   showToast('Green '+hole+' marked watered · logged to hand water log');
   renderMain();
 }
 
 function openMoistureDetail(hole){
-  const m = DATA.moisture.find(mm=>mm.hole===hole);
-  if(!m) return;
-  const low = Math.min(...Object.values(m.spots));
-  const avg = Math.round(Object.values(m.spots).reduce((a,b)=>a+b,0)/5);
-  const lowSpot = Object.keys(m.spots).find(k => m.spots[k] === low);
-  
-  // Color spots by dryness
+  const entry = DATA.moisture.find(mm=>mm.hole===hole);
+  const r = entry && entry.readings && entry.readings[0];
+  if(!r) return;
+  const spots = r.spots;
+  const vals = Object.values(spots).filter(v=>v!=null);
+  const low = Math.min(...vals);
+  const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  const lowSpot = Object.keys(spots).find(k => spots[k] === low);
+  const readings = entry.readings;
   const spotColor = v => v < 19 ? 'spot-dry' : v < 23 ? 'spot-attn' : v < 28 ? 'spot-ok' : 'spot-wet';
-  
+  const sc = v => v==null?'var(--text-muted)':v<22?'var(--red-600)':v<28?'var(--green-700)':'var(--blue-600)';
+
   openSidePanel('Green '+hole+' — Moisture Detail', `
     <div class="sp-section">
       <div style="display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:center;">
         <div class="green-diagram-mini">
-          <div class="green-spot gs-front ${spotColor(m.spots.front)}"></div>
-          <div class="green-spot gs-middle ${spotColor(m.spots.middle)}"></div>
-          <div class="green-spot gs-back ${spotColor(m.spots.back)}"></div>
-          <div class="green-spot gs-left ${spotColor(m.spots.left)}"></div>
-          <div class="green-spot gs-right ${spotColor(m.spots.right)}"></div>
+          <div class="green-spot gs-front ${spotColor(spots.front)}"></div>
+          <div class="green-spot gs-middle ${spotColor(spots.middle)}"></div>
+          <div class="green-spot gs-back ${spotColor(spots.back)}"></div>
+          <div class="green-spot gs-left ${spotColor(spots.left)}"></div>
+          <div class="green-spot gs-right ${spotColor(spots.right)}"></div>
         </div>
         <div>
           <div style="font-size:26px;font-weight:800;color:${low<22?'var(--red-600)':'var(--green-700)'};">${low}%</div>
           <div style="font-size:11px;color:var(--text-muted);">Lowest spot (${lowSpot})</div>
-          <div style="margin-top:6px;font-size:12px;color:var(--text-secondary);">Avg ${avg}% · ${m.ts}</div>
+          <div style="margin-top:6px;font-size:12px;color:var(--text-secondary);">Avg ${avg}% · ${r.ts}</div>
+          <div style="margin-top:3px;font-size:10px;color:var(--text-muted);">${readings.length} reading${readings.length!==1?'s':''} on file</div>
         </div>
       </div>
     </div>
     <div class="sp-section">
-      <div class="sp-section-hd">5-spot breakdown</div>
+      <div class="sp-section-hd">Latest 5-spot breakdown</div>
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center;">
         ${['front','middle','back','left','right'].map(k=>`
           <div style="background:var(--bg-field);padding:8px 4px;border-radius:6px;">
             <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;">${k}</div>
-            <div style="font-size:14px;font-weight:700;margin-top:2px;color:${m.spots[k]==null?'var(--text-muted)':m.spots[k]<22?'var(--red-600)':'var(--text-primary)'};">${m.spots[k]!=null?m.spots[k]+'%':'—'}</div>
+            <div style="font-size:14px;font-weight:700;margin-top:2px;color:${spots[k]==null?'var(--text-muted)':spots[k]<22?'var(--red-600)':'var(--text-primary)'};">${spots[k]!=null?spots[k]+'%':'—'}</div>
           </div>
         `).join('')}
       </div>
@@ -3270,12 +3292,31 @@ function openMoistureDetail(hole){
         <div class="ai-suggest-txt">Hand water 12 min focused on ${lowSpot} spot — no rain in 4 days, elevated ET. Dollar spot risk elevated. Consider extending tonight's baseline irrigation by 5 min on this zone.</div>
       </div>
     </div>
-    ${m.notes ? `<div class="sp-section"><div class="sp-section-hd">Notes</div><div style="font-size:12px;color:var(--text-secondary);">${m.notes}</div></div>` : ''}
+    ${readings.length > 1 ? `
+    <div class="sp-section">
+      <div class="sp-section-hd">Reading history (${readings.length})</div>
+      <table class="moist-hist-table" style="margin-top:4px;">
+        <thead><tr><th>Date logged</th><th>F</th><th>M</th><th>B</th><th>L</th><th>R</th><th>Avg</th></tr></thead>
+        <tbody>
+          ${readings.map((rd,i)=>{
+            const v=Object.values(rd.spots).filter(x=>x!=null);
+            const a=v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null;
+            return `<tr${i===0?' class="moist-hist-latest"':''}>
+              <td>${rd.ts||'—'}${i===0?'<span class="moist-latest-badge">Latest</span>':''}</td>
+              ${['front','middle','back','left','right'].map(k=>`<td style="font-weight:700;color:${sc(rd.spots[k])};">${rd.spots[k]!=null?rd.spots[k]+'%':'—'}</td>`).join('')}
+              <td style="font-weight:700;color:${sc(a)};">${a!=null?a+'%':'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    ` : ''}
+    ${r.notes ? `<div class="sp-section"><div class="sp-section-hd">Notes</div><div style="font-size:12px;color:var(--text-secondary);">${r.notes}</div></div>` : ''}
     <div class="sp-section">
       <div class="sp-section-hd">Actions</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn-green" onclick="markWatered(${hole});closeSidePanel();">Mark watered</button>
-        <button class="btn-outline">Log new reading</button>
+        <button class="btn-outline" onclick="closeSidePanel();openMoistureEntry();">Log new reading</button>
         <button class="btn-outline">Open in Irrigation Agent</button>
       </div>
     </div>
@@ -3371,10 +3412,12 @@ function openHandWaterModal(){
 let curHoleDetail = 1;
 function renderHoleDetail(){
   const hole = curHoleDetail;
-  const m = DATA.moisture.find(mm=>mm.hole===hole);
+  const mEntry = DATA.moisture.find(mm=>mm.hole===hole);
+  const m = mEntry ? moistLatest(hole) : null;
   const scout = DATA.scoutLog.filter(s => s.holes && s.holes.includes(hole));
-  const avg = m ? Math.round(Object.values(m.spots).reduce((a,b)=>a+b,0)/5) : '—';
-  const low = m ? Math.min(...Object.values(m.spots)) : '—';
+  const _mv = m ? Object.values(m.spots).filter(v=>v!=null) : [];
+  const avg = _mv.length ? Math.round(_mv.reduce((a,b)=>a+b,0)/_mv.length) : '—';
+  const low = _mv.length ? Math.min(..._mv) : '—';
   
   const holeChips = Array.from({length:18},(_,i)=>i+1).map(n=>
     `<button class="hole-btn${n===hole?' active':''}" onclick="setHoleDetail(${n})">${n}</button>`
@@ -3431,25 +3474,58 @@ function renderHoleDetail(){
   
   <div class="two-col-eq">
     <div class="card">
-      <div class="card-head"><div class="card-title">Moisture — 5 spots</div></div>
+      <div class="card-head">
+        <div class="card-title">Moisture — 5 spots</div>
+        ${mEntry && mEntry.readings && mEntry.readings.length ? `<span style="font-size:10px;font-weight:600;color:var(--text-muted);">${mEntry.readings.length} reading${mEntry.readings.length!==1?'s':''} on file</span>` : ''}
+      </div>
       <div class="card-body">
-        ${m ? `
-          <div style="display:flex;gap:20px;align-items:center;">
+        ${m ? (()=>{
+          const sc = v => v==null?'var(--text-muted)':v<19?'var(--red-600)':v<23?'var(--amber-600)':v<28?'var(--green-700)':'var(--blue-600)';
+          const sb = v => v==null?'var(--bg-field)':v<19?'var(--red-100)':v<23?'var(--amber-100)':v<28?'var(--green-50)':'var(--blue-100)';
+          const sdot = v => v==null?'spot-none':v<19?'spot-dry':v<23?'spot-attn':v<28?'spot-ok':'spot-wet';
+          return `
+          <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:12px;">
             <div class="green-diagram-mini" style="flex-shrink:0;">
-              <div class="green-spot gs-front ${(m.spots.front<22?'spot-dry':m.spots.front<28?'spot-ok':'spot-wet')}"></div>
-              <div class="green-spot gs-middle ${(m.spots.middle<22?'spot-dry':m.spots.middle<28?'spot-ok':'spot-wet')}"></div>
-              <div class="green-spot gs-back ${(m.spots.back<22?'spot-dry':m.spots.back<28?'spot-ok':'spot-wet')}"></div>
-              <div class="green-spot gs-left ${(m.spots.left<22?'spot-dry':m.spots.left<28?'spot-ok':'spot-wet')}"></div>
-              <div class="green-spot gs-right ${(m.spots.right<22?'spot-dry':m.spots.right<28?'spot-ok':'spot-wet')}"></div>
+              <div class="green-spot gs-front ${sdot(m.spots.front)}"></div>
+              <div class="green-spot gs-middle ${sdot(m.spots.middle)}"></div>
+              <div class="green-spot gs-back ${sdot(m.spots.back)}"></div>
+              <div class="green-spot gs-left ${sdot(m.spots.left)}"></div>
+              <div class="green-spot gs-right ${sdot(m.spots.right)}"></div>
             </div>
-            <div style="flex:1;">
-              <div style="font-size:24px;font-weight:800;color:${low<22?'var(--red-600)':'var(--green-700)'};">${low}%</div>
-              <div style="font-size:11px;color:var(--text-muted);">Lowest · avg ${avg}%</div>
-              <div style="margin-top:8px;font-size:10px;color:var(--text-secondary);">${m.ts}</div>
-              <button class="btn-outline" style="margin-top:10px;" onclick="navTo('course','moisture')">Log new reading →</button>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:24px;font-weight:800;color:${sc(low)};line-height:1;">${low}%</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Lowest · avg ${avg}%</div>
+              <div style="margin-top:5px;font-size:10px;color:var(--text-secondary);">Logged: ${m.ts}</div>
             </div>
           </div>
-        ` : '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">No moisture data for this hole yet</div>'}
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:10px;">
+            ${['front','middle','back','left','right'].map(k=>{
+              const v=m.spots[k];
+              return `<div style="text-align:center;padding:6px 3px;background:${sb(v)};border-radius:6px;">
+                <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:.04em;">${k}</div>
+                <div style="font-size:13px;font-weight:800;color:${sc(v)};margin-top:2px;">${v!=null?v+'%':'—'}</div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;font-weight:600;padding:7px 9px;background:var(--bg-field);border-radius:7px;margin-bottom:10px;border:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--red-600);flex-shrink:0;"></div><span style="color:var(--red-600);">Urgent ≤18%</span></div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--amber-600);flex-shrink:0;"></div><span style="color:var(--amber-600);">Attention 19–22%</span></div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green-500);flex-shrink:0;"></div><span style="color:var(--green-700);">Good 23–28%</span></div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue-600);flex-shrink:0;"></div><span style="color:var(--blue-600);">Wet 28%+</span></div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-outline" style="flex:1;font-size:11px;" onclick="openMoistureDetail(${hole})">History →</button>
+            <button class="btn-outline" style="flex:1;font-size:11px;" onclick="navTo('course','moisture')">Log reading →</button>
+          </div>`;
+        })() : `
+          <div style="text-align:center;padding:20px 10px;color:var(--text-muted);font-size:12px;">No moisture data for this hole yet</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;font-weight:600;padding:7px 9px;background:var(--bg-field);border-radius:7px;margin-bottom:10px;border:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--red-600);flex-shrink:0;"></div><span style="color:var(--red-600);">Urgent ≤18%</span></div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--amber-600);flex-shrink:0;"></div><span style="color:var(--amber-600);">Attention 19–22%</span></div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green-500);flex-shrink:0;"></div><span style="color:var(--green-700);">Good 23–28%</span></div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue-600);flex-shrink:0;"></div><span style="color:var(--blue-600);">Wet 28%+</span></div>
+          </div>
+          <button class="btn-outline" style="width:100%;" onclick="navTo('course','moisture')">Log new reading →</button>`}
       </div>
     </div>
     <div class="card">
@@ -3765,6 +3841,104 @@ function pushHeightsToWO(){
 
 /* ═══ COURSE → MOISTURE (5-SPOT) ═══ */
 function renderMoisture(){
+  // Collect all unique dates with readings, newest first
+  const dateSet = new Set();
+  DATA.moisture.forEach(m=>{
+    (m.readings||[]).forEach(r=>{ if(r.isoDate && r.isoDate!=='legacy') dateSet.add(r.isoDate); });
+  });
+  const allDates = Array.from(dateSet).sort((a,b)=>b.localeCompare(a));
+
+  const spotBg  = v => v==null?'#fff':v<19?'var(--red-100)':v<23?'var(--amber-100)':v<28?'var(--green-50)':'var(--blue-100)';
+  const spotCol = v => v==null?'var(--text-muted)':v<19?'var(--red-600)':v<23?'var(--amber-600)':v<28?'var(--green-700)':'var(--blue-600)';
+
+  const rows = DATA.moisture.map(m=>{
+    const hole = m.hole;
+    const readings = m.readings || [];
+    const expanded = expandedMoistHoles.has(hole);
+
+    // Pick which reading to show in the main row based on the filter
+    let mainR;
+    if(moistFilterDate === 'latest'){
+      mainR = readings[0] || null;
+    } else {
+      mainR = readings.find(r=>r.isoDate===moistFilterDate) || null;
+    }
+
+    // Build main row
+    let mainRow;
+    if(mainR){
+      const spots = mainR.spots;
+      const vals = Object.values(spots).filter(v=>v!=null);
+      const avg = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+      mainRow = `
+        <div class="moist-entry-row" style="cursor:pointer;" onclick="toggleMoistExpand(${hole})">
+          <div class="moist-entry-hole">Green ${hole}</div>
+          ${['front','middle','back','left','right'].map(k=>{
+            const v=spots[k];
+            return `<div style="text-align:center;padding:6px;background:${spotBg(v)};border-radius:6px;font-size:12px;font-weight:700;color:${spotCol(v)};">${v!=null?v+'%':'—'}</div>`;
+          }).join('')}
+          ${avg!=null
+            ? `<div style="text-align:center;padding:6px;background:${spotBg(avg)};border-radius:6px;font-size:12px;font-weight:800;color:${spotCol(avg)};">${avg}%</div>`
+            : `<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;color:var(--text-muted);">—</div>`}
+          <div style="font-size:9px;color:var(--text-muted);line-height:1.5;">${mainR.ts||'—'}</div>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+            <button class="moist-expand-btn${expanded?' open':''}" onclick="event.stopPropagation();toggleMoistExpand(${hole})">
+              ${expanded?'▲':'▼'} ${readings.length}
+            </button>
+            <button class="row-icon-btn" onclick="event.stopPropagation();editMoistureReading(${hole},0)" title="Edit latest reading">✏</button>
+            <button class="row-icon-btn row-del" onclick="event.stopPropagation();deleteMoistureReading(event,${hole})" title="Delete all readings">×</button>
+          </div>
+        </div>`;
+    } else {
+      mainRow = `
+        <div class="moist-entry-row" style="opacity:0.45;">
+          <div class="moist-entry-hole">Green ${hole}</div>
+          ${['front','middle','back','left','right'].map(()=>'<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;color:var(--text-muted);">—</div>').join('')}
+          <div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;color:var(--text-muted);">—</div>
+          <div style="font-size:9px;color:var(--text-muted);">No reading</div>
+          <div></div>
+        </div>`;
+    }
+
+    // Build expanded history panel
+    let histPanel = '';
+    if(expanded && readings.length){
+      histPanel = `
+        <div class="moist-history-panel">
+          <table class="moist-hist-table">
+            <thead><tr>
+              <th style="min-width:140px;">Date logged</th>
+              <th>Front</th><th>Middle</th><th>Back</th><th>Left</th><th>Right</th><th>Avg</th>
+              <th>Notes</th><th></th>
+            </tr></thead>
+            <tbody>
+              ${readings.map((rd,i)=>{
+                const v=Object.values(rd.spots).filter(x=>x!=null);
+                const a=v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null;
+                return `<tr${i===0?' class="moist-hist-latest"':''}>
+                  <td>${rd.ts||'—'}${i===0?'<span class="moist-latest-badge">Latest</span>':''}</td>
+                  ${['front','middle','back','left','right'].map(k=>{
+                    const vv=rd.spots[k];
+                    return `<td style="font-weight:700;color:${spotCol(vv)};">${vv!=null?vv+'%':'—'}</td>`;
+                  }).join('')}
+                  <td style="font-weight:700;color:${spotCol(a)};">${a!=null?a+'%':'—'}</td>
+                  <td style="font-size:10px;color:var(--text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${rd.notes||'—'}</td>
+                  <td>
+                    <div style="display:flex;gap:3px;">
+                      <button class="row-icon-btn" onclick="editMoistureReading(${hole},${i})" title="Edit">✏</button>
+                      <button class="row-icon-btn row-del" onclick="deleteSingleReading(${hole},${i})" title="Delete this reading">×</button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    return `<div>${mainRow}${histPanel}</div>`;
+  }).join('');
+
   return `
   <div class="card">
     <div class="card-head">
@@ -3772,6 +3946,12 @@ function renderMoisture(){
       <button class="btn-green" onclick="openMoistureEntry()">+ Log reading</button>
     </div>
     <div class="card-body">
+      ${allDates.length ? `
+      <div class="moist-date-bar">
+        <span class="moist-date-lbl">View date:</span>
+        <button class="moist-date-pill${moistFilterDate==='latest'?' active':''}" onclick="setMoistFilter('latest')">Latest</button>
+        ${allDates.map(d=>`<button class="moist-date-pill${moistFilterDate===d?' active':''}" onclick="setMoistFilter('${d}')">${fmtDatePill(d)}</button>`).join('')}
+      </div>` : ''}
       <div class="moisture-legend">
         <div class="legend-item"><div class="legend-dot spot-dry"></div><span><strong>Urgent</strong> ≤ 18%</span></div>
         <div class="legend-item"><div class="legend-dot spot-attn"></div><span><strong>Attention</strong> 19-22%</span></div>
@@ -3783,31 +3963,16 @@ function renderMoisture(){
         <div class="ai-suggest-txt">Green 8 NW (left spot) consistently drives hand-water needs — dry 5 of last 7 days. Recurring issue suggests soil compaction or irrigation coverage gap. Consider wetting agent application or irrigation head audit.</div>
       </div>
       <div class="card" style="box-shadow:none;border:1px solid var(--border);">
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-field);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:grid;grid-template-columns:90px repeat(5,1fr) 60px 40px;gap:6px;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-field);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:grid;grid-template-columns:90px repeat(5,1fr) 60px 110px auto;gap:6px;">
           <div>HOLE</div>
-          <div class="moist-spot-lbl">Front</div>
-          <div class="moist-spot-lbl">Middle</div>
-          <div class="moist-spot-lbl">Back</div>
-          <div class="moist-spot-lbl">Left</div>
-          <div class="moist-spot-lbl">Right</div>
+          <div class="moist-spot-lbl">Front</div><div class="moist-spot-lbl">Middle</div><div class="moist-spot-lbl">Back</div>
+          <div class="moist-spot-lbl">Left</div><div class="moist-spot-lbl">Right</div>
           <div class="moist-spot-lbl">Avg</div>
-          <div style="width:40px;"></div>
+          <div class="moist-spot-lbl">Logged</div>
+          <div></div>
         </div>
         <div style="padding:10px;">
-          ${DATA.moisture.map(m=>{
-            const low = Math.min(...Object.values(m.spots));
-            return `
-              <div class="moist-entry-row" onclick="openMoistureDetail(${m.hole})" style="cursor:pointer;">
-                <div class="moist-entry-hole">Green ${m.hole}</div>
-                ${['front','middle','back','left','right'].map(k=>{const v=m.spots[k];return `<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;font-weight:700;color:${v==null?'var(--text-muted)':v<22?'var(--red-600)':v<28?'var(--green-700)':'var(--blue-600)'};">${v!=null?v+'%':'—'}</div>`;}).join('')}
-                ${(()=>{const vals=Object.values(m.spots).filter(v=>v!=null);if(!vals.length)return `<div style="text-align:center;padding:6px;background:#fff;border-radius:6px;font-size:12px;font-weight:700;color:var(--text-muted);">—</div>`;const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);return `<div style="text-align:center;padding:6px;background:${avg<22?'var(--red-100)':avg<28?'var(--green-100)':'var(--blue-100)'};border-radius:6px;font-size:12px;font-weight:800;color:${avg<22?'var(--red-600)':avg<28?'var(--green-700)':'var(--blue-600)'};">${avg}%</div>`;})()}
-                <div style="display:flex;gap:4px;">
-                  <button class="row-icon-btn" onclick="event.stopPropagation();editMoistureReading(${m.hole})">✏</button>
-                  <button class="row-icon-btn row-del" onclick="event.stopPropagation();deleteMoistureReading(event,${m.hole})">×</button>
-                </div>
-              </div>
-            `;
-          }).join('')}
+          ${DATA.moisture.length ? rows : '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">No moisture readings yet. Click "+ Log reading" to start.</div>'}
         </div>
       </div>
     </div>
@@ -3815,14 +3980,17 @@ function renderMoisture(){
   `;
 }
 
-function editMoistureReading(hole){
-  const m = DATA.moisture.find(x=>x.hole===hole);
-  if(!m) return;
+function editMoistureReading(hole, ridx=0){
+  const entry = DATA.moisture.find(x=>x.hole===hole);
+  if(!entry || !entry.readings[ridx]) return;
+  const r = entry.readings[ridx];
+  const isLatest = ridx === 0;
   const html = `
   <div class="modal-overlay open" id="moist-modal">
     <div class="modal-box wide">
-      <div class="modal-title">✏ Edit moisture reading — Green ${hole}</div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Update the 5-spot readings for Green ${hole}. Tab between fields.</div>
+      <div class="modal-title">✏ Edit moisture reading — Green ${hole}${isLatest?' (latest)':' ('+r.ts+')'}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Update the 5-spot readings. Tab between fields.</div>
+      <input type="hidden" id="ms-ridx" value="${ridx}">
       <div class="modal-row" style="align-items:flex-end;margin-bottom:12px;">
         <div class="modal-field" style="max-width:90px;margin:0;">
           <label>Hole #</label>
@@ -3830,31 +3998,31 @@ function editMoistureReading(hole){
         </div>
         <div class="modal-field" style="margin:0;flex:1;">
           <label>Front</label>
-          <input type="number" id="ms-front" placeholder="%" min="0" max="100" value="${m.spots.front!=null?m.spots.front:''}"
+          <input type="number" id="ms-front" placeholder="%" min="0" max="100" value="${r.spots.front!=null?r.spots.front:''}"
             onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-middle').focus();}">
         </div>
         <div class="modal-field" style="margin:0;flex:1;">
           <label>Middle</label>
-          <input type="number" id="ms-middle" placeholder="%" min="0" max="100" value="${m.spots.middle!=null?m.spots.middle:''}"
+          <input type="number" id="ms-middle" placeholder="%" min="0" max="100" value="${r.spots.middle!=null?r.spots.middle:''}"
             onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-back').focus();}">
         </div>
         <div class="modal-field" style="margin:0;flex:1;">
           <label>Back</label>
-          <input type="number" id="ms-back" placeholder="%" min="0" max="100" value="${m.spots.back!=null?m.spots.back:''}"
+          <input type="number" id="ms-back" placeholder="%" min="0" max="100" value="${r.spots.back!=null?r.spots.back:''}"
             onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-left').focus();}">
         </div>
         <div class="modal-field" style="margin:0;flex:1;">
           <label>Left</label>
-          <input type="number" id="ms-left" placeholder="%" min="0" max="100" value="${m.spots.left!=null?m.spots.left:''}"
+          <input type="number" id="ms-left" placeholder="%" min="0" max="100" value="${r.spots.left!=null?r.spots.left:''}"
             onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-right').focus();}">
         </div>
         <div class="modal-field" style="margin:0;flex:1;">
           <label>Right</label>
-          <input type="number" id="ms-right" placeholder="%" min="0" max="100" value="${m.spots.right!=null?m.spots.right:''}"
+          <input type="number" id="ms-right" placeholder="%" min="0" max="100" value="${r.spots.right!=null?r.spots.right:''}"
             onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('ms-notes').focus();}">
         </div>
       </div>
-      <div class="modal-field"><label>Notes (optional)</label><input type="text" id="ms-notes" value="${m.notes||''}" placeholder="e.g. NW corner dry, wind exposure"></div>
+      <div class="modal-field"><label>Notes (optional)</label><input type="text" id="ms-notes" value="${r.notes||''}" placeholder="e.g. NW corner dry, wind exposure"></div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('moist-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
         <button class="btn-green" onclick="saveEditedMoisture(${hole})">Save changes</button>
@@ -3866,26 +4034,22 @@ function editMoistureReading(hole){
 }
 
 function saveEditedMoisture(hole){
+  const ridx   = parseInt(document.getElementById('ms-ridx').value) || 0;
   const front  = parseFloat(document.getElementById('ms-front').value)  || null;
   const middle = parseFloat(document.getElementById('ms-middle').value) || null;
   const back   = parseFloat(document.getElementById('ms-back').value)   || null;
   const left   = parseFloat(document.getElementById('ms-left').value)   || null;
   const right  = parseFloat(document.getElementById('ms-right').value)  || null;
   const notes  = document.getElementById('ms-notes').value.trim();
-  const now = new Date();
-  const ts = MONTHS_SHORT[now.getMonth()]+' '+now.getDate()+' · '+
-    (DATA.timeFormat==='24h'
-      ? String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')
-      : ((now.getHours()%12)||12)+':'+(String(now.getMinutes()).padStart(2,'0'))+(now.getHours()<12?'am':'pm'));
-  const idx = DATA.moisture.findIndex(m=>m.hole===hole);
-  if(idx>=0){
+  const entry  = DATA.moisture.find(m=>m.hole===hole);
+  if(entry && entry.readings[ridx]){
     const spots = {};
     if(front  !== null) spots.front  = front;
     if(middle !== null) spots.middle = middle;
     if(back   !== null) spots.back   = back;
     if(left   !== null) spots.left   = left;
     if(right  !== null) spots.right  = right;
-    DATA.moisture[idx] = { hole, spots, ts, notes };
+    entry.readings[ridx] = { ...entry.readings[ridx], spots, notes };
   }
   lsSave();
   showToast('Reading updated');
@@ -3896,8 +4060,20 @@ function saveEditedMoisture(hole){
 
 function deleteMoistureReading(e, hole){
   e.stopPropagation();
-  if(!confirm('Delete moisture reading for Green '+hole+'?')) return;
+  const entry = DATA.moisture.find(m=>m.hole===hole);
+  const count = entry ? entry.readings.length : 0;
+  if(!confirm('Delete all '+count+' moisture reading'+(count!==1?'s':'')+' for Green '+hole+'?')) return;
   DATA.moisture = DATA.moisture.filter(m=>m.hole!==hole);
+  lsSave();
+  renderMain();
+  showToast('All readings deleted for Green '+hole);
+}
+function deleteSingleReading(hole, idx){
+  const entry = DATA.moisture.find(m=>m.hole===hole);
+  if(!entry) return;
+  if(!confirm('Delete this reading for Green '+hole+'?')) return;
+  entry.readings.splice(idx, 1);
+  if(!entry.readings.length) DATA.moisture = DATA.moisture.filter(m=>m.hole!==hole);
   lsSave();
   renderMain();
   showToast('Reading deleted');
@@ -3980,6 +4156,7 @@ function saveMoisture(){
   const right  = parseFloat(document.getElementById('ms-right').value)  || null;
   const notes  = document.getElementById('ms-notes').value.trim();
   const now = new Date();
+  const isoDate = now.toISOString().slice(0,10);
   const ts = MONTHS_SHORT[now.getMonth()]+' '+now.getDate()+' · '+
     (DATA.timeFormat==='24h'
       ? String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')
@@ -3991,10 +4168,10 @@ function saveMoisture(){
     if(back   !== null) spots.back   = back;
     if(left   !== null) spots.left   = left;
     if(right  !== null) spots.right  = right;
-    const existing = DATA.moisture.findIndex(m => m.hole === hole);
-    const entry = { hole, spots: Object.keys(spots).length ? spots : {front:0,middle:0,back:0,left:0,right:0}, ts, notes };
-    if(existing >= 0) DATA.moisture[existing] = entry;
-    else DATA.moisture.push(entry);
+    const reading = { spots: Object.keys(spots).length ? spots : {front:null,middle:null,back:null,left:null,right:null}, ts, notes, isoDate };
+    const existing = DATA.moisture.find(m => m.hole === hole);
+    if(existing) existing.readings.unshift(reading);
+    else DATA.moisture.push({ hole, readings: [reading] });
   });
   DATA.moisture.sort((a,b) => a.hole - b.hole);
   lsSave();
@@ -5956,6 +6133,57 @@ function buildChart(id,vals,thresh,color){
 function posTooltip(e,card){}
 
 const LS_KEY = 'fairwayos_v6_data';
+// Migrate moisture data from old flat format {hole,spots,ts,notes} → {hole,readings:[...]}
+function migrateData(){
+  if(DATA.moisture && Array.isArray(DATA.moisture)){
+    DATA.moisture = DATA.moisture.map(m => {
+      if(Array.isArray(m.readings)) return m;
+      return {
+        hole: m.hole,
+        readings: (m.spots && Object.keys(m.spots).length) ? [{
+          spots: m.spots,
+          ts: m.ts || '',
+          notes: m.notes || '',
+          isoDate: 'legacy'
+        }] : []
+      };
+    });
+  }
+}
+
+// Returns the latest reading object for a hole, or null
+function moistLatest(hole){
+  const entry = DATA.moisture.find(m => m.hole === hole);
+  if(!entry || !entry.readings || !entry.readings.length) return null;
+  return entry.readings[0];
+}
+
+// Format an isoDate string as a short human-readable label
+function fmtDatePill(isoDate){
+  if(!isoDate || isoDate === 'legacy') return 'Older';
+  try{
+    const [y,mo,d] = isoDate.split('-').map(Number);
+    const date = new Date(y, mo-1, d);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const yest = new Date(today); yest.setDate(today.getDate()-1);
+    if(date.getTime()===today.getTime()) return 'Today';
+    if(date.getTime()===yest.getTime()) return 'Yesterday';
+    return MONTHS_SHORT[date.getMonth()]+' '+date.getDate();
+  }catch(e){ return isoDate; }
+}
+
+function setMoistFilter(dateStr){
+  moistFilterDate = dateStr;
+  expandedMoistHoles.clear();
+  renderMain();
+}
+
+function toggleMoistExpand(hole){
+  if(expandedMoistHoles.has(hole)) expandedMoistHoles.delete(hole);
+  else expandedMoistHoles.add(hole);
+  renderMain();
+}
+
 function lsSave(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(DATA)); }catch(e){}
 }
@@ -5965,6 +6193,7 @@ function lsLoad(){
     if(!raw) return;
     const saved = JSON.parse(raw);
     Object.assign(DATA, saved);
+    migrateData();
   }catch(e){}
 }
 
