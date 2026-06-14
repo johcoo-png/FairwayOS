@@ -1818,7 +1818,7 @@ function openAIBriefing(){
     <div class="sp-section">
       <div class="sp-section-hd">Today's overview</div>
       <div style="font-size:12px;line-height:1.6;color:var(--text-primary);background:var(--green-50);padding:12px;border-radius:9px;border:1px solid var(--green-200);">
-        Overnight run completed normal. 6 greens flagged for hand watering — priority Green 8 (dry spot NW corner, 18%). Rain forecast 40% tomorrow after 11am. Dollar spot risk elevated — dew point 54°F, flagged on Green 7. Preventative spray window Friday morning. Tournament Saturday — greens need firm, recommend reducing irrigation tonight.
+        ${morningBriefText()}
       </div>
     </div>
     <div class="sp-section">
@@ -1851,7 +1851,7 @@ function askAI(){
   document.getElementById('ai-response-wrap').style.display = 'block';
   document.getElementById('ai-response-txt').innerHTML = '<span class="spin"></span> Agent thinking...';
   setTimeout(()=>{
-    document.getElementById('ai-response-txt').innerHTML = 'Demo response — in production this connects to the Claude API with course data context. Your question: <em>"'+q+'"</em> would be answered using weather, moisture, scouting, spray, and equipment data streams.';
+    document.getElementById('ai-response-txt').innerHTML = aiAnswer(q);
   }, 900);
 }
 
@@ -3104,7 +3104,7 @@ function renderIrrToday(){
   <div class="irr-brief" onclick="openIrrBriefing()">
     <div class="ai-brief-chevron" style="top:16px;right:20px;">→</div>
     <div class="irr-brief-hd"><span>✦</span> AI MORNING IRRIGATION BRIEFING · BETA · click to chat</div>
-    <div class="irr-brief-txt">Overnight run completed normal. ${urgGreens.length} greens flagged for hand watering — priority Green 8 (NW corner 18%). Rain forecast 40% tomorrow after 11am → hold Fairways 6-7 tonight. Broken head hole 11 (from Projects) → hole 11 zone offline, add to hand water priority. Tournament Saturday → recommend -15% runtime on greens tonight for firm conditions.</div>
+    <div class="irr-brief-txt">${irrBriefText()}</div>
   </div>
   
   <div class="irr-hand-water${urgGreens.length===0?' empty':''}">
@@ -3187,7 +3187,7 @@ function openIrrBriefing(){
   openSidePanel('✦ Irrigation Agent · BETA', `
     <div class="sp-section">
       <div class="sp-section-hd">Today's brief</div>
-      <div style="font-size:12px;line-height:1.6;padding:12px;background:var(--green-50);border-radius:9px;border:1px solid var(--green-200);">Overnight run completed normal. 3 greens flagged for hand watering — priority Green 8 (NW corner 18%). Rain forecast 40% tomorrow after 11am → hold Fairways 6-7 tonight. Broken head hole 11 → hole offline, add to hand water. Tournament Saturday → -15% runtime tonight for firm greens.</div>
+      <div style="font-size:12px;line-height:1.6;padding:12px;background:var(--green-50);border-radius:9px;border:1px solid var(--green-200);">${irrBriefText()}</div>
     </div>
     <div class="sp-section">
       <div class="sp-section-hd">Ask the agent</div>
@@ -3221,7 +3221,7 @@ function runIrrAgent(){
   setTimeout(()=>{
     resp.innerHTML = `<div class="ai-suggest">
       <div class="ai-suggest-hd">✦ AI RECOMMENDATION</div>
-      <div class="ai-suggest-txt">Demo response: Cross-referencing your data — tournament Saturday + current moisture averages + weather forecast suggests reducing tonight's green irrigation by 15% (12min → 10min) for firmer playing conditions. Maintain Green 8 override (17 min NW corner focus) due to recurring dry pattern. Recommend confirming pin placements align with moisture data before committing to lower mow heights Friday.</div>
+      <div class="ai-suggest-txt">${aiAnswer(q)}</div>
     </div>`;
   }, 1000);
 }
@@ -3434,7 +3434,7 @@ function renderHoleDetail(){
   <div class="ai-brief" onclick="openAIBriefing()">
     <div class="ai-brief-chevron">→</div>
     <div class="ai-brief-hd"><span>✦</span> Hole ${hole} — AI-GENERATED SUMMARY</div>
-    <div class="ai-brief-txt">Hole ${hole} · ${scout.length>0?'Dollar spot flagged (moderate) on front-right':'No active issues'}, moisture avg ${avg}%${low!==avg?' (low spot '+low+'%)':''}, mowed 0.110" today. ${hole===7?'Fungicide application scheduled Friday. ':''}Pin Center-Front. Green speed 10.2 stimp. Irrigation normal last night (12 min).</div>
+    <div class="ai-brief-txt">${holeBriefText(hole)}</div>
   </div>
   
   <div class="three-col" style="margin-bottom:14px;">
@@ -3840,6 +3840,147 @@ function pushHeightsToWO(){
 
 
 /* ═══ COURSE → MOISTURE (5-SPOT) ═══ */
+/* ═══ MOISTURE ANALYSIS ENGINE ═══
+   Reads DATA.moisture and surfaces real, ranked dry-spot patterns.
+   Thresholds match the legend: <19% urgent, <23% attention. */
+function analyzeMoisture(){
+  const SPOTS = [['front','Front'],['middle','Middle'],['back','Back'],['left','Left'],['right','Right']];
+  const findings = [];
+  DATA.moisture.forEach(m => {
+    const readings = (m.readings || []).filter(r => r && r.spots);
+    if(!readings.length) return;
+    const recent = readings.slice(0, 5); // readings are stored newest-first
+    SPOTS.forEach(([key, label]) => {
+      const vals = recent.map(r => r.spots[key]).filter(v => v != null);
+      if(!vals.length) return;
+      const latest = vals[0];
+      if(latest >= 23) return; // only flag spots that are dry right now
+      const n = vals.length;
+      const avg = Math.round(vals.reduce((a,b)=>a+b,0) / n);
+      const dryCount    = vals.filter(v => v < 23).length;
+      const urgentCount = vals.filter(v => v < 19).length;
+      const consistent  = n >= 2 && dryCount === n; // dry on every recent reading
+      // Urgency score: how dry now + how many urgent readings + how persistent
+      let score = (23 - latest) * 2 + urgentCount * 6 + (consistent ? n * 3 : dryCount);
+      findings.push({ hole:m.hole, label, latest, avg, n, dryCount, urgentCount, consistent, vals, score });
+    });
+  });
+  findings.sort((a,b) => b.score - a.score);
+  return findings;
+}
+function moistureInsightHTML(){
+  const findings = analyzeMoisture();
+  if(!findings.length){
+    return `<div class="ai-suggest-hd">✦ AI PATTERN DETECTION · MOISTURE</div>
+      <div class="ai-suggest-txt">All greens are reading within a healthy range (≥23%) at their latest scan. No dry-spot patterns detected — maintain current irrigation.</div>`;
+  }
+  // Only surface the urgent ones: low now or dry on every recent reading. Cap at 3.
+  let urgent = findings.filter(f => f.urgentCount > 0 || f.consistent).slice(0, 3);
+  if(!urgent.length) urgent = findings.slice(0, 1); // nothing "urgent" — show the single driest as a heads-up
+  const items = urgent.map(f => {
+    const sev = f.urgentCount > 0 ? '🔴' : '🟠';
+    const trend = f.consistent
+      ? `consistently dry — ${f.vals.map(v=>v+'%').join(', ')} across the last ${f.n} reading${f.n>1?'s':''} (avg ${f.avg}%)`
+      : `currently ${f.latest}%${f.n>1?` (avg ${f.avg}% over last ${f.n})`:''}`;
+    const rec = f.urgentCount > 0
+      ? 'Prioritize hand-watering here and check irrigation coverage / wetting-agent need.'
+      : 'Monitor and spot-water — trending toward the urgent threshold.';
+    return `${sev} <strong>Green ${f.hole} — ${f.label} spot</strong>: ${trend}. ${rec}`;
+  });
+  return `<div class="ai-suggest-hd">✦ AI PATTERN DETECTION · MOISTURE</div>
+    <div class="ai-suggest-txt">${items.join('<br><br>')}</div>`;
+}
+/* Shared, data-driven text builders used by the other AI panels. */
+function irrBriefText(){
+  const f = analyzeMoisture();
+  const urgentHoles = [...new Set(f.filter(x => x.urgentCount > 0 || x.consistent).map(x => x.hole))];
+  const top = f[0];
+  const parts = [];
+  parts.push(urgentHoles.length
+    ? `${urgentHoles.length} green${urgentHoles.length>1?'s':''} flagged for hand-watering${top?` — priority Green ${top.hole} (${top.label} spot ${top.latest}%)`:''}.`
+    : 'No greens need hand-watering — all latest spot readings are healthy (≥23%).');
+  DATA.scoutLog.filter(s => s.category==='irrigation' && s.status!=='Resolved')
+    .forEach(s => parts.push(`${s.issue} on ${s.hole} (from Scouting) → zone affected, add to today's priority.`));
+  const ns = DATA.upcomingSprays && DATA.upcomingSprays[0];
+  if(ns) parts.push(`Next scheduled spray: ${ns.product} on ${ns.area} (${ns.date}).`);
+  return parts.join(' ');
+}
+function morningBriefText(){
+  const f = analyzeMoisture();
+  const urgentHoles = [...new Set(f.filter(x => x.urgentCount > 0 || x.consistent).map(x => x.hole))];
+  const top = f[0];
+  const parts = [];
+  parts.push(urgentHoles.length
+    ? `${urgentHoles.length} green${urgentHoles.length>1?'s':''} flagged for hand-watering${top?` — priority Green ${top.hole} (${top.label} spot ${top.latest}%)`:''}.`
+    : 'No greens flagged for hand-watering — moisture is healthy across the board.');
+  const disease = DATA.scoutLog.filter(s => s.status!=='Resolved' && s.category==='disease');
+  if(disease.length) parts.push(`Disease watch: ${disease.map(s=>`${s.issue} on ${s.hole} (${s.sev})`).join(', ')}.`);
+  const ns = DATA.upcomingSprays && DATA.upcomingSprays[0];
+  if(ns) parts.push(`Upcoming spray: ${ns.product} on ${ns.area}, ${ns.date}${ns.time?` ${ns.time}`:''}.`);
+  const gs = DATA.greenSpeeds && DATA.greenSpeeds[0];
+  if(gs) parts.push(`Latest green speed ${gs.val} stimp (${gs.date}).`);
+  return parts.join(' ');
+}
+function holeBriefText(hole){
+  const entry = DATA.moisture.find(m => m.hole === hole);
+  const latest = entry ? moistLatest(hole) : null;
+  const vals = latest ? Object.values(latest.spots).filter(v => v != null) : [];
+  const avg = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+  const low = vals.length ? Math.min(...vals) : null;
+  const lowSpot = (latest && low != null) ? Object.keys(latest.spots).find(k => latest.spots[k] === low) : null;
+  const scout = DATA.scoutLog.filter(s => s.holes && s.holes.includes(hole) && s.status!=='Resolved');
+  const gs = DATA.greenSpeeds && DATA.greenSpeeds[0];
+  const parts = [`Hole ${hole}:`];
+  parts.push(scout.length ? scout.map(s=>`${s.issue} (${s.sev.toLowerCase()})`).join(', ')+'.' : 'no active scouting issues.');
+  parts.push(avg != null
+    ? `Moisture avg ${avg}%${(low != null && low < avg) ? `, low spot ${low}% (${lowSpot})` : ''}.`
+    : 'No moisture reading logged yet.');
+  if(gs) parts.push(`Green speed ${gs.val} stimp (${gs.date}).`);
+  return parts.join(' ');
+}
+/* Local question responder — analyzes logged data (no remote LLM on the static site). */
+function aiAnswer(q){
+  const ql = q.toLowerCase();
+  const f = analyzeMoisture();
+  const urgent = f.filter(x => x.urgentCount > 0 || x.consistent);
+  const fmt = x => `Green ${x.hole} ${x.label.toLowerCase()} spot (${x.latest}%${x.consistent?`, dry ${x.n} readings running`:''})`;
+  // Specific green / hole
+  const hm = ql.match(/(?:green|hole)\s*(\d{1,2})/);
+  if(hm){
+    const h = parseInt(hm[1]);
+    const entry = DATA.moisture.find(m => m.hole === h);
+    if(!entry || !entry.readings.length) return `No moisture readings are logged yet for Green ${h}, so I can't analyze it. Log a reading and I'll start tracking its dry spots.`;
+    const latest = entry.readings[0];
+    const vals = Object.values(latest.spots).filter(v => v != null);
+    const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+    const hf = f.filter(x => x.hole === h);
+    if(hf.length){
+      const d = hf[0];
+      return `Green ${h} is averaging ${avg}% at the latest scan, and the ${d.label.toLowerCase()} spot is the concern — ${d.consistent?`dry on the last ${d.n} readings (${d.vals.join('%, ')}%)`:`currently ${d.latest}%`}. ${d.urgentCount>0?'Prioritize hand-watering it and check irrigation coverage there.':'Worth monitoring and spot-watering.'}`;
+    }
+    return `Green ${h} looks healthy — averaging ${avg}% at the latest scan with no spot below the 23% attention line.`;
+  }
+  // Dry / moisture / hand-water themed
+  if(/(dry|moist|hand ?water|\bwater\b)/.test(ql)){
+    if(!urgent.length) return `No greens are reading dry right now — every logged spot is at or above 23%, so no hand-watering is needed based on the latest scans.`;
+    return `Driest spots from your latest readings: ${urgent.slice(0,3).map(fmt).join('; ')}. Start with the 🔴 spots first.`;
+  }
+  // Spray / disease / scouting
+  if(/(spray|disease|dollar|fungi|scout)/.test(ql)){
+    const open = DATA.scoutLog.filter(s => s.status!=='Resolved' && (s.category==='disease' || /spray/i.test(s.action||'')));
+    if(!open.length) return `No open disease or spray items in the scouting log right now.`;
+    return `Open scouting items pointing to a spray: ${open.map(s=>`${s.issue} on ${s.hole} (${s.sev}${s.notes?` — ${s.notes}`:''})`).join('; ')}.`;
+  }
+  // Tournament / firmness / irrigation reduction
+  if(/(tournament|firm|reduce|irrigat)/.test(ql)){
+    const guard = urgent.length ? `Keep overrides on the dry spots (${urgent.slice(0,2).map(fmt).join('; ')}), and ` : '';
+    return `For firmer greens, cut tonight's green runtime while protecting dry areas. ${guard}reduce the remaining greens' baseline ~15%. Re-check moisture in the morning before mowing lower.`;
+  }
+  // Fallback: overall status from data
+  return urgent.length
+    ? `From your logged data: ${urgent.slice(0,3).map(fmt).join('; ')} need attention. Ask about a specific green (e.g. "Green 8"), spraying, or tournament prep for more detail.`
+    : `All logged moisture readings are in a healthy range and there are no urgent dry spots. Ask about a specific green, spraying, or tournament prep and I'll pull from your logged data.`;
+}
 function renderMoisture(){
   // Collect all unique dates with readings, newest first
   const dateSet = new Set();
@@ -3959,8 +4100,7 @@ function renderMoisture(){
         <div class="legend-item"><div class="legend-dot spot-wet"></div><span><strong>Wet</strong> 28%+</span></div>
       </div>
       <div class="ai-suggest" style="margin-top:10px;margin-bottom:14px;">
-        <div class="ai-suggest-hd">✦ AI PATTERN DETECTION</div>
-        <div class="ai-suggest-txt">Green 8 NW (left spot) consistently drives hand-water needs — dry 5 of last 7 days. Recurring issue suggests soil compaction or irrigation coverage gap. Consider wetting agent application or irrigation head audit.</div>
+        ${moistureInsightHTML()}
       </div>
       <div class="card" style="box-shadow:none;border:1px solid var(--border);">
         <div style="padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-field);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:grid;grid-template-columns:90px repeat(5,1fr) 60px 110px 124px;gap:6px;">
