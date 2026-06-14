@@ -1,0 +1,5 @@
+# FairwayOS — static site + serverless functions on Netlify.
+# No build step: the site is plain HTML served from the repo root.
+[build]
+  publish = "."
+  functions = "netlify/functions"

@@ -1849,10 +1849,11 @@ function askAI(){
   const q = document.getElementById('ai-ask-input').value.trim();
   if(!q) return showToast('Enter a question first', true);
   document.getElementById('ai-response-wrap').style.display = 'block';
-  document.getElementById('ai-response-txt').innerHTML = '<span class="spin"></span> Agent thinking...';
-  setTimeout(()=>{
-    document.getElementById('ai-response-txt').innerHTML = aiAnswer(q);
-  }, 900);
+  const out = document.getElementById('ai-response-txt');
+  out.innerHTML = '<span class="spin"></span> Claude is analyzing your data...';
+  askClaude(q)
+    .then(ans => { out.innerHTML = formatAIText(ans); })
+    .catch(() => { out.innerHTML = aiAnswer(q); }); // offline / not configured → local analysis
 }
 
 let editingRoutineId = null;
@@ -3217,13 +3218,11 @@ function runIrrAgent(){
   if(!q) return showToast('Enter a question', true);
   const resp = document.getElementById('irr-agent-resp');
   resp.style.display = 'block';
-  resp.innerHTML = '<div class="ai-suggest"><div class="ai-suggest-hd"><span class="spin"></span> Agent analyzing...</div></div>';
-  setTimeout(()=>{
-    resp.innerHTML = `<div class="ai-suggest">
-      <div class="ai-suggest-hd">✦ AI RECOMMENDATION</div>
-      <div class="ai-suggest-txt">${aiAnswer(q)}</div>
-    </div>`;
-  }, 1000);
+  resp.innerHTML = '<div class="ai-suggest"><div class="ai-suggest-hd"><span class="spin"></span> Claude is analyzing...</div></div>';
+  const render = (txt) => { resp.innerHTML = `<div class="ai-suggest"><div class="ai-suggest-hd">✦ AI RECOMMENDATION</div><div class="ai-suggest-txt">${txt}</div></div>`; };
+  askClaude(q)
+    .then(ans => render(formatAIText(ans)))
+    .catch(() => render(aiAnswer(q))); // offline / not configured → local analysis
 }
 
 function markWatered(hole){
@@ -3980,6 +3979,42 @@ function aiAnswer(q){
   return urgent.length
     ? `From your logged data: ${urgent.slice(0,3).map(fmt).join('; ')} need attention. Ask about a specific green (e.g. "Green 8"), spraying, or tournament prep for more detail.`
     : `All logged moisture readings are in a healthy range and there are no urgent dry spots. Ask about a specific green, spraying, or tournament prep and I'll pull from your logged data.`;
+}
+/* ─ Real Claude answers via the Netlify function. Falls back to aiAnswer() locally. ─ */
+function buildAIContext(){
+  const findings = analyzeMoisture().map(f => ({
+    green:f.hole, spot:f.label, latest:f.latest, avg:f.avg,
+    recentReadings:f.vals, consistentlyDry:f.consistent, urgent:f.urgentCount>0
+  }));
+  const moistureLatest = DATA.moisture.map(m => {
+    const r = m.readings && m.readings[0];
+    return { green:m.hole, date:r?r.isoDate:null, spots:r?r.spots:null, notes:r?r.notes:'' };
+  });
+  return JSON.stringify({
+    moistureThresholds: { urgentBelowPct:19, attentionBelowPct:23 },
+    moistureFindings: findings,
+    moistureLatest,
+    scouting: DATA.scoutLog,
+    upcomingSprays: DATA.upcomingSprays,
+    recentSprays: DATA.sprayLog,
+    greenSpeeds: DATA.greenSpeeds,
+    mowHeights: DATA.mowHeights
+  });
+}
+async function askClaude(question){
+  const res = await fetch('/.netlify/functions/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, context: buildAIContext() })
+  });
+  if(!res.ok) throw new Error('AI request failed: ' + res.status);
+  const data = await res.json();
+  if(!data.answer) throw new Error('Empty answer');
+  return data.answer;
+}
+function formatAIText(s){
+  const esc = String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/\n/g,'<br>');
 }
 function renderMoisture(){
   // Collect all unique dates with readings, newest first
