@@ -184,6 +184,7 @@ table.jb-table,table.hw-log-table,table.spray-table,table.mow-table,table.scout-
 .jb-table th,.hw-log-table th,.spray-table th,.mow-table th,.scout-table th,.fleet-table th,.parts-table th,.svc-hist-table th{background:var(--bg-field);padding:9px 14px;text-align:left;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;border-bottom:1px solid var(--border);letter-spacing:.04em;}
 .jb-table td,.hw-log-table td,.spray-table td,.mow-table td,.scout-table td,.fleet-table td,.parts-table td,.svc-hist-table td{padding:9px 14px;border-bottom:1px solid var(--border);vertical-align:middle;}
 .jb-table tr:last-child td,.hw-log-table tr:last-child td,.spray-table tr:last-child td,.mow-table tr:last-child td,.scout-table tr:last-child td,.fleet-table tr:last-child td,.parts-table tr:last-child td{border-bottom:none;}
+.irr-status-sel{font-family:var(--font);font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:6px;padding:3px 7px;cursor:pointer;}
 .st-pending,.st-inprog,.st-done,.st-hold,.sp,.sp-todo,.sp-done{font-size:10px;padding:3px 9px;border-radius:6px;font-weight:700;white-space:nowrap;display:inline-block;}
 .st-pending,.sp-todo{background:var(--amber-100);color:var(--amber-600);}
 .st-inprog{background:var(--blue-100);color:var(--blue-600);}
@@ -371,6 +372,19 @@ table.jb-table,table.hw-log-table,table.spray-table,table.mow-table,table.scout-
 .moist-entry-hole{font-size:12px;font-weight:700;color:var(--text-primary);}
 .moist-spot-input{padding:6px 8px;border-radius:6px;border:1px solid var(--border-medium);font-size:12px;background:#fff;color:var(--text-primary);font-family:var(--font);text-align:center;width:100%;}
 .moist-spot-lbl{font-size:8px;color:var(--text-muted);text-align:center;text-transform:uppercase;font-weight:700;letter-spacing:.05em;}
+/* Moisture quick-entry: mode toggle + 18-hole grid */
+.moist-mode-tabs{display:inline-flex;gap:4px;background:var(--bg-field);border:1px solid var(--border);border-radius:9px;padding:3px;margin-bottom:14px;}
+.moist-mode-tab{padding:6px 14px;font-size:12px;font-weight:600;border-radius:7px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;font-family:var(--font);transition:all .14s;}
+.moist-mode-tab.active{background:var(--green-700);color:#fff;}
+.modal-box.xl{max-width:1180px;}
+.moist-grid-scroll{overflow-x:auto;padding-bottom:6px;}
+.moist-grid5{display:grid;grid-template-columns:62px repeat(18,minmax(46px,1fr));gap:5px;align-items:center;min-width:940px;}
+.mg5-corner{}
+.mg5-hd{font-size:10px;font-weight:800;color:var(--text-secondary);text-align:center;padding-bottom:2px;}
+.mg5-rowlbl{font-size:9px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;text-align:right;padding-right:4px;}
+.moist-grid5 input{width:100%;padding:7px 2px;border-radius:6px;border:1px solid var(--border-medium);font-size:12px;background:#fff;color:var(--text-primary);font-family:var(--font);text-align:center;}
+.moist-grid5 input:focus{outline:none;border-color:var(--green-600);box-shadow:0 0 0 2px var(--green-100);}
+.moist-grid5 input:not(:placeholder-shown){border-color:var(--green-500);background:var(--green-50);font-weight:700;}
 .detail-section{margin-bottom:18px;}
 .detail-section-hd{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
 .two-col-eq{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
@@ -1018,6 +1032,7 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let moistFilterDate = 'latest';
 let expandedMoistHoles = new Set();
+let moistEntryMode = 'grid';
 const DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -1638,7 +1653,7 @@ function renderTodayOverview(){
   <div class="ov-two">
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="lbl" style="margin:0;">Morning routine</div>
+        <div class="lbl" style="margin:0;">To-Do List</div>
         <button class="btn-outline" onclick="openRoutineModal()">+ Add item</button>
       </div>
       <div class="routine-wrap" id="routine-list">
@@ -2048,12 +2063,11 @@ function renderJobBoard(){
       <div style="display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-field);flex-wrap:wrap;">
         <select class="jb-filter-sel" onchange="filterJobs()" id="jb-f-crew"><option value="">All crew</option>${DATA.crew.map(c=>`<option>${c}</option>`).join('')}</select>
         <select class="jb-filter-sel" onchange="filterJobs()" id="jb-f-area"><option value="">All areas</option>${DATA.areas.map(a=>`<option>${a}</option>`).join('')}</select>
-        <select class="jb-filter-sel" onchange="filterJobs()" id="jb-f-status"><option value="">All status</option><option>Pending</option><option>In progress</option><option>Done</option><option>On hold</option></select>
         <button class="btn-outline" onclick="clearJobFilters()">Clear</button>
       </div>
       <div style="overflow-x:auto;">
         <table class="jb-table">
-          <thead><tr><th>Crew member</th><th>Task</th><th>Area</th><th>Equipment</th><th>Est. time</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Crew member</th><th>Task</th><th>Area</th><th>Equipment</th><th>Est. time</th><th></th></tr></thead>
           <tbody id="job-tbody">${renderJobRows()}</tbody>
         </table>
       </div>
@@ -2063,9 +2077,8 @@ function renderJobBoard(){
 }
 
 function renderJobRows(){
-  const sc = {'Pending':'st-pending','In progress':'st-inprog','Done':'st-done','On hold':'st-hold'};
   const visible = DATA.jobs.map((j,i)=>({...j,_i:i})).filter(j=>jobMatchesDate(j, jbSelDate));
-  if(!visible.length) return `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">No jobs for this date</td></tr>`;
+  if(!visible.length) return `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">No jobs for this date</td></tr>`;
   return visible.map(j=>`
       <tr data-idx="${j._i}">
         <td>${j.crew}</td>
@@ -2073,7 +2086,6 @@ function renderJobRows(){
         <td>${j.area}</td>
         <td>${j.equipment || '<span style="color:var(--text-muted);">—</span>'}</td>
         <td>${j.time}</td>
-        <td><span class="${sc[j.status]||'st-pending'}">${j.status}</span></td>
         <td><div class="row-actions">
           <button class="row-icon-btn" onclick="openJobModal(${j._i})" title="Edit">✏</button>
           <button class="row-icon-btn row-del" onclick="deleteJob(${j._i})" title="Delete">×</button>
@@ -2084,17 +2096,16 @@ function renderJobRows(){
 function filterJobs(){
   const c = document.getElementById('jb-f-crew').value;
   const a = document.getElementById('jb-f-area').value;
-  const s = document.getElementById('jb-f-status').value;
   document.querySelectorAll('#job-tbody tr').forEach(tr=>{
     const idx = parseInt(tr.dataset.idx);
     const j = DATA.jobs[idx];
     if(!j){ tr.style.display=''; return; }
-    const show = (!c||j.crew===c) && (!a||j.area===a) && (!s||j.status===s);
+    const show = (!c||j.crew===c) && (!a||j.area===a);
     tr.style.display = show ? '' : 'none';
   });
 }
 function clearJobFilters(){
-  ['jb-f-crew','jb-f-area','jb-f-status'].forEach(id=>document.getElementById(id).value='');
+  ['jb-f-crew','jb-f-area'].forEach(id=>document.getElementById(id).value='');
   filterJobs();
 }
 
@@ -2138,7 +2149,7 @@ function openJobModal(idx){
           <select id="jm-area">${DATA.areas.map(a=>`<option${j&&j.area===a?' selected':''}>${a}</option>`).join('')}</select>
         </div>
       </div>
-      <div class="modal-field"><label>Task description</label>
+      <div class="modal-field"><label>Task description (optional)</label>
         <input type="text" id="jm-desc" placeholder="e.g. Mow greens — all 18" value="${j?j.task:''}">
       </div>
       <div class="modal-row">
@@ -2150,16 +2161,11 @@ function openJobModal(idx){
         </div>
         <div class="modal-field"><label>Est. time</label>
           <select id="jm-time">
-            ${['30 min','45 min','1 hr','1.5 hr','2 hr','2.5 hr','3 hr','3.5 hr','All day'].map(t=>`<option${j&&j.time===t?' selected':''}>${t}</option>`).join('')}
+            ${['15 min','30 min','45 min','1 hr','1.5 hr','2 hr','2.5 hr','3 hr','3.5 hr','4 hr','4.5 hr','5 hr','6 hr','7 hr','8 hr','All day'].map(t=>`<option${j&&j.time===t?' selected':''}>${t}</option>`).join('')}
           </select>
         </div>
       </div>
       <div class="modal-row">
-        <div class="modal-field"><label>Status</label>
-          <select id="jm-status">
-            ${['Pending','In progress','Done','On hold'].map(s=>`<option${j&&j.status===s?' selected':''}>${s}</option>`).join('')}
-          </select>
-        </div>
         <div class="modal-field" style="position:relative;"><label>Date</label>
           <button type="button" class="jm-date-btn${jmCalSelDate?'':' empty'}" id="jm-date-btn" onclick="openJMCal(event)">${jmCalSelDate?(()=>{const d=new Date(jmCalSelDate+'T00:00:00');return MONTHS_SHORT[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();})():'Select date…'}</button>
           <input type="hidden" id="jm-date" value="${jmCalSelDate||''}">
@@ -2223,13 +2229,11 @@ function saveJob(){
     area: document.getElementById('jm-area').value,
     equipment: document.getElementById('jm-equip').value,
     time: document.getElementById('jm-time').value,
-    status: document.getElementById('jm-status').value,
     date: document.getElementById('jm-date').value || null,
     repeat,
     repeatDays,
     dir: '—'
   };
-  if(!data.task) return showToast('Enter task description', true);
   if(editingJobIdx !== null){
     DATA.jobs[editingJobIdx] = data;
     showToast('Job updated');
@@ -3322,6 +3326,17 @@ function openMoistureDetail(hole){
   `);
 }
 
+function setIrrZoneStatus(zone, val, el){
+  if(!DATA.irrZoneStatus) DATA.irrZoneStatus = {};
+  DATA.irrZoneStatus[zone] = val;
+  lsSave();
+  // Recolor the select in place without a full re-render
+  if(el){
+    const cls={Scheduled:'st-pending',Ran:'st-done',Held:'st-hold',Skipped:'st-hold'};
+    el.className = 'irr-status-sel ' + (cls[val]||'');
+  }
+  showToast(zone+' → '+val);
+}
 function renderIrrSchedule(){
   return `
   <div class="card">
@@ -3335,16 +3350,31 @@ function renderIrrSchedule(){
     <div class="card-body">
       <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Default irrigation runs for each zone. Applied every night unless overridden in "Tonight's plan."</div>
       <table class="mow-table">
-        <thead><tr><th>Zone</th><th>Start time</th><th>Duration</th><th>Notes</th><th></th></tr></thead>
+        <thead><tr><th>Zone</th><th>Start time</th><th>Duration</th><th>Notes</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          <tr><td><strong>All greens (18)</strong></td><td>10:00 PM</td><td>12 min</td><td>Standard cycle</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Fairways 1-6</td><td>11:00 PM</td><td>18 min</td><td>Front group</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Fairways 7-12</td><td>11:30 PM</td><td>18 min</td><td>Middle group</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Fairways 13-18</td><td>12:00 AM</td><td>18 min</td><td>Back group</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Tees (all)</td><td>10:30 PM</td><td>8 min</td><td>Grouped</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Rough (all)</td><td>1:00 AM</td><td>22 min</td><td>Light cycle</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Practice green</td><td>10:00 PM</td><td>10 min</td><td>With main greens</td><td><button class="row-icon-btn">✏</button></td></tr>
-          <tr><td>Range tees</td><td>10:30 PM</td><td>8 min</td><td>With main tees</td><td><button class="row-icon-btn">✏</button></td></tr>
+          ${(()=>{
+            const zones=[
+              {n:'All greens (18)',s:'10:00 PM',d:'12 min',no:'Standard cycle',b:true},
+              {n:'Fairways 1-6',s:'11:00 PM',d:'18 min',no:'Front group'},
+              {n:'Fairways 7-12',s:'11:30 PM',d:'18 min',no:'Middle group'},
+              {n:'Fairways 13-18',s:'12:00 AM',d:'18 min',no:'Back group'},
+              {n:'Tees (all)',s:'10:30 PM',d:'8 min',no:'Grouped'},
+              {n:'Rough (all)',s:'1:00 AM',d:'22 min',no:'Light cycle'},
+              {n:'Practice green',s:'10:00 PM',d:'10 min',no:'With main greens'},
+              {n:'Range tees',s:'10:30 PM',d:'8 min',no:'With main tees'}
+            ];
+            const opts=['Scheduled','Ran','Held','Skipped'];
+            const cls={Scheduled:'st-pending',Ran:'st-done',Held:'st-hold',Skipped:'st-hold'};
+            return zones.map(z=>{
+              const cur=(DATA.irrZoneStatus&&DATA.irrZoneStatus[z.n])||'Scheduled';
+              const nameEsc=z.n.replace(/'/g,"\\'");
+              return `<tr>
+                <td>${z.b?`<strong>${z.n}</strong>`:z.n}</td><td>${z.s}</td><td>${z.d}</td><td>${z.no}</td>
+                <td><select class="irr-status-sel ${cls[cur]||''}" onchange="setIrrZoneStatus('${nameEsc}',this.value,this)">${opts.map(o=>`<option${o===cur?' selected':''}>${o}</option>`).join('')}</select></td>
+                <td><button class="row-icon-btn">✏</button></td>
+              </tr>`;
+            }).join('');
+          })()}
         </tbody>
       </table>
       <div style="margin-top:12px;"><button class="btn-green">+ Add zone</button></div>
@@ -3514,7 +3544,7 @@ function renderHoleDetail(){
           </div>
           <div style="display:flex;gap:6px;">
             <button class="btn-outline" style="flex:1;font-size:11px;" onclick="openMoistureDetail(${hole})">History →</button>
-            <button class="btn-outline" style="flex:1;font-size:11px;" onclick="navTo('course','moisture')">Log reading →</button>
+            <button class="btn-outline" style="flex:1;font-size:11px;" onclick="navTo('course','moisture');openMoistureEntry();">Log reading →</button>
           </div>`;
         })() : `
           <div style="text-align:center;padding:20px 10px;color:var(--text-muted);font-size:12px;">No moisture data for this hole yet</div>
@@ -3524,7 +3554,7 @@ function renderHoleDetail(){
             <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green-500);flex-shrink:0;"></div><span style="color:var(--green-700);">Good 23–28%</span></div>
             <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue-600);flex-shrink:0;"></div><span style="color:var(--blue-600);">Wet 28%+</span></div>
           </div>
-          <button class="btn-outline" style="width:100%;" onclick="navTo('course','moisture')">Log new reading →</button>`}
+          <button class="btn-outline" style="width:100%;" onclick="navTo('course','moisture');openMoistureEntry();">Log new reading →</button>`}
       </div>
     </div>
     <div class="card">
@@ -3991,6 +4021,9 @@ function buildAIContext(){
     return { green:m.hole, date:r?r.isoDate:null, spots:r?r.spots:null, notes:r?r.notes:'' };
   });
   return JSON.stringify({
+    location: { course:DATA.courseName, zip:DATA.zipCode, city:DATA.courseCity, state:DATA.courseState },
+    turf: { grassType:DATA.grassType||null, soilType:DATA.soilType||null },
+    weather: buildWeatherSummary(weatherData) || DATA.lastWeather || null,
     moistureThresholds: { urgentBelowPct:19, attentionBelowPct:23 },
     moistureFindings: findings,
     moistureLatest,
@@ -4000,6 +4033,37 @@ function buildAIContext(){
     greenSpeeds: DATA.greenSpeeds,
     mowHeights: DATA.mowHeights
   });
+}
+// Compact, AI-friendly snapshot of the current weather + short forecast.
+function buildWeatherSummary(d){
+  if(!d || !d.current) return null;
+  const cur=d.current, daily=d.daily;
+  const today=new Date().toISOString().slice(0,10);
+  const ti=(daily&&daily.time)?daily.time.indexOf(today):-1;
+  const idx=ti>=0?ti:0;
+  const r=v=>v==null?null:Math.round(v);
+  const s={
+    asOf: cur.time || new Date().toISOString(),
+    tempF: r(cur.temperature_2m),
+    dewPointF: r(cur.dew_point_2m),
+    humidityPct: r(cur.relative_humidity_2m),
+    windMph: r(cur.wind_speed_10m),
+    windGustMph: r(cur.wind_gusts_10m),
+    precipNowIn: cur.precipitation
+  };
+  if(daily){
+    s.todayHighF=r(daily.temperature_2m_max[idx]);
+    s.todayLowF=r(daily.temperature_2m_min[idx]);
+    s.todayPrecipIn=daily.precipitation_sum[idx];
+    s.todayRainChancePct=daily.precipitation_probability_max[idx];
+    s.tomorrowHighF=r(daily.temperature_2m_max[idx+1]);
+    s.tomorrowPrecipIn=daily.precipitation_sum[idx+1];
+    s.tomorrowRainChancePct=daily.precipitation_probability_max[idx+1];
+    if(idx>=7) s.past7DayPrecipIn=+daily.precipitation_sum.slice(idx-7,idx).reduce((a,b)=>a+b,0).toFixed(2);
+  }
+  s.sprayWindowOk = s.windMph!=null ? s.windMph<=10 : null;
+  s.dewRisk = s.dewPointF==null?null:(s.dewPointF>=60?'High':s.dewPointF>=55?'Elevated':'Low');
+  return s;
 }
 async function askClaude(question){
   const res = await fetch('/.netlify/functions/ask', {
@@ -4049,7 +4113,9 @@ function renderMoisture(){
       mainRow = `
         <div class="moist-entry-row" style="cursor:pointer;" onclick="toggleMoistExpand(${hole})">
           <div class="moist-entry-hole">Green ${hole}</div>
-          ${['front','middle','back','left','right'].map(k=>{
+          ${mainR.quick
+            ? `<div style="grid-column:span 5;text-align:center;padding:6px;background:${spotBg(mainR.overall)};border-radius:6px;font-size:12px;font-weight:700;color:${spotCol(mainR.overall)};">${mainR.overall!=null?mainR.overall+'%':'—'} <span style="font-size:9px;font-weight:700;color:var(--text-muted);">· overall</span></div>`
+            : ['front','middle','back','left','right'].map(k=>{
             const v=spots[k];
             return `<div style="text-align:center;padding:6px;background:${spotBg(v)};border-radius:6px;font-size:12px;font-weight:700;color:${spotCol(v)};">${v!=null?v+'%':'—'}</div>`;
           }).join('')}
@@ -4092,8 +4158,10 @@ function renderMoisture(){
                 const v=Object.values(rd.spots).filter(x=>x!=null);
                 const a=v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null;
                 return `<tr${i===0?' class="moist-hist-latest"':''}>
-                  <td>${rd.ts||'—'}${i===0?'<span class="moist-latest-badge">Latest</span>':''}</td>
-                  ${['front','middle','back','left','right'].map(k=>{
+                  <td>${rd.ts||'—'}${i===0?'<span class="moist-latest-badge">Latest</span>':''}${rd.quick?'<span class="moist-latest-badge" style="background:var(--bg-field);color:var(--text-muted);">⚡ quick</span>':''}</td>
+                  ${rd.quick
+                    ? `<td colspan="5" style="font-weight:700;color:${spotCol(rd.overall)};">${rd.overall!=null?rd.overall+'%':'—'} <span style="font-size:9px;font-weight:600;color:var(--text-muted);">overall</span></td>`
+                    : ['front','middle','back','left','right'].map(k=>{
                     const vv=rd.spots[k];
                     return `<td style="font-weight:700;color:${spotCol(vv)};">${vv!=null?vv+'%':'—'}</td>`;
                   }).join('')}
@@ -4160,12 +4228,20 @@ function editMoistureReading(hole, ridx=0){
   if(!entry || !entry.readings[ridx]) return;
   const r = entry.readings[ridx];
   const isLatest = ridx === 0;
+  const _t = new Date();
+  const todayIso = _t.getFullYear()+'-'+String(_t.getMonth()+1).padStart(2,'0')+'-'+String(_t.getDate()).padStart(2,'0');
+  const dateInit = (r.isoDate && r.isoDate!=='legacy') ? r.isoDate : '';
   const html = `
   <div class="modal-overlay open" id="moist-modal">
     <div class="modal-box wide">
       <div class="modal-title">✏ Edit moisture reading — Green ${hole}${isLatest?' (latest)':' ('+r.ts+')'}</div>
       <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Update the 5-spot readings. Tab between fields.</div>
       <input type="hidden" id="ms-ridx" value="${ridx}">
+      <div class="modal-field" style="display:flex;align-items:center;gap:12px;margin-bottom:12px;background:var(--bg-field);border:1px solid var(--border-medium);border-radius:8px;padding:10px 12px;">
+        <label style="margin:0;display:flex;align-items:center;gap:6px;white-space:nowrap;">📅 Reading date</label>
+        <input type="date" id="ms-edit-date" value="${dateInit}" max="${todayIso}" style="max-width:180px;margin:0;">
+        <span style="font-weight:normal;color:var(--text-muted);font-size:10px;line-height:1.3;">Change to correct the date this reading was taken.</span>
+      </div>
       <div class="modal-row" style="align-items:flex-end;margin-bottom:12px;">
         <div class="modal-field" style="max-width:90px;margin:0;">
           <label>Hole #</label>
@@ -4216,15 +4292,29 @@ function saveEditedMoisture(hole){
   const left   = parseFloat(document.getElementById('ms-left').value)   || null;
   const right  = parseFloat(document.getElementById('ms-right').value)  || null;
   const notes  = document.getElementById('ms-notes').value.trim();
+  const dateVal = document.getElementById('ms-edit-date').value;
   const entry  = DATA.moisture.find(m=>m.hole===hole);
   if(entry && entry.readings[ridx]){
+    const orig = entry.readings[ridx];
     const spots = {};
     if(front  !== null) spots.front  = front;
     if(middle !== null) spots.middle = middle;
     if(back   !== null) spots.back   = back;
     if(left   !== null) spots.left   = left;
     if(right  !== null) spots.right  = right;
-    entry.readings[ridx] = { ...entry.readings[ridx], spots, notes };
+    // Apply a new date if changed — keep the original time-of-day on the stamp.
+    let isoDate = orig.isoDate, ts = orig.ts;
+    if(dateVal && dateVal !== orig.isoDate){
+      const [y,mo,d] = dateVal.split('-').map(Number);
+      isoDate = dateVal;
+      const timePart = (orig.ts && orig.ts.includes(' · ')) ? orig.ts.split(' · ')[1] : '';
+      ts = MONTHS_SHORT[mo-1]+' '+d + (timePart ? ' · '+timePart : '');
+    }
+    const updated = { ...orig, spots, notes, isoDate, ts };
+    delete updated.quick; delete updated.overall;
+    entry.readings[ridx] = updated;
+    // Re-sort newest-first so a changed date lands in the right place
+    entry.readings.sort((a,b)=>(b.isoDate||'').localeCompare(a.isoDate||''));
   }
   lsSave();
   showToast('Reading updated');
@@ -4254,19 +4344,85 @@ function deleteSingleReading(hole, idx){
   showToast('Reading deleted');
 }
 
+// Keyboard navigation for the 5×18 quick grid.
+// Arrows move between boxes (never change the number); Enter/Tab flow down a
+// hole then to the top of the next hole.
+function moistGridKey(e, si, h){
+  const SPOTS = ['front','middle','back','left','right'];
+  let id;
+  if(e.key==='Enter' || (e.key==='Tab' && !e.shiftKey)){
+    if(si < 4)       id = 'msg-'+SPOTS[si+1]+'-'+h;     // down to next spot
+    else if(h < 18)  id = 'msg-front-'+(h+1);           // last spot -> top of next hole
+    else             id = 'msg-notes';                  // end of grid
+  } else if(e.key==='ArrowDown'){  if(si < 4)  id = 'msg-'+SPOTS[si+1]+'-'+h; }
+  else if(e.key==='ArrowUp'){      if(si > 0)  id = 'msg-'+SPOTS[si-1]+'-'+h; }
+  else if(e.key==='ArrowLeft'){    if(h > 1)   id = 'msg-'+SPOTS[si]+'-'+(h-1); }
+  else if(e.key==='ArrowRight'){   if(h < 18)  id = 'msg-'+SPOTS[si]+'-'+(h+1); }
+  else return;   // let every other key (digits, backspace…) behave normally
+  e.preventDefault();      // stop arrows from incrementing the number / save on Enter
+  e.stopPropagation();
+  if(id){
+    const el = document.getElementById(id);
+    if(el){ el.focus(); if(el.select) el.select(); }
+  }
+}
+function setMoistEntryMode(mode){
+  moistEntryMode = mode;
+  document.getElementById('ms-grid-view').style.display   = mode==='grid'   ? 'block' : 'none';
+  document.getElementById('ms-detail-view').style.display = mode==='detail' ? 'block' : 'none';
+  document.querySelectorAll('#moist-modal .moist-mode-tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
+  setTimeout(()=>{
+    const f = document.getElementById(mode==='grid' ? 'msg-front-1' : 'ms-hole');
+    if(f) f.focus();
+  }, 30);
+}
+function saveMoistureDispatch(){
+  if(moistEntryMode==='grid') saveMoistureGrid();
+  else saveMoisture();
+}
 function openMoistureEntry(){
+  moistEntryMode = 'grid';
   const _t = new Date();
   const todayIso = _t.getFullYear()+'-'+String(_t.getMonth()+1).padStart(2,'0')+'-'+String(_t.getDate()).padStart(2,'0');
+  const SPOTS = ['front','middle','back','left','right'];
+  // Header row: corner + Hole 1..18
+  const headerRow = `<div class="mg5-corner"></div>` +
+    Array.from({length:18},(_,i)=>`<div class="mg5-hd">H${i+1}</div>`).join('');
+  // One row per spot; Enter moves DOWN the hole, then to the top of the next hole.
+  const spotRows = SPOTS.map((spot,si)=>{
+    const label = `<div class="mg5-rowlbl">${spot}</div>`;
+    const inputs = Array.from({length:18},(_,i)=>{
+      const h = i+1;
+      return `<input type="number" id="msg-${spot}-${h}" min="0" max="100" placeholder="–"
+        onkeydown="moistGridKey(event,${si},${h})">`;
+    }).join('');
+    return label + inputs;
+  }).join('');
+  const gridCells = headerRow + spotRows;
   const html = `
   <div class="modal-overlay open" id="moist-modal">
-    <div class="modal-box wide">
+    <div class="modal-box wide xl">
       <div class="modal-title">+ Log moisture reading</div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Type a hole number and Tab through all 5 spots. Or use multi-select for bulk entry.</div>
       <div class="modal-field" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--bg-field);border:1px solid var(--border-medium);border-radius:8px;padding:10px 12px;">
         <label style="margin:0;display:flex;align-items:center;gap:6px;white-space:nowrap;">📅 Reading date</label>
         <input type="date" id="ms-date" value="${todayIso}" max="${todayIso}" style="max-width:180px;margin:0;">
         <span style="font-weight:normal;color:var(--text-muted);font-size:10px;line-height:1.3;">Defaults to today — set an earlier date to log a reading you missed.</span>
       </div>
+      <div class="moist-mode-tabs">
+        <button class="moist-mode-tab active" data-mode="grid"   onclick="setMoistEntryMode('grid')">⚡ Quick grid</button>
+        <button class="moist-mode-tab"        data-mode="detail" onclick="setMoistEntryMode('detail')">📋 Detailed 5-spot</button>
+      </div>
+
+      <div id="ms-grid-view">
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">Full 5-spot scan for every green — type a % and press <strong>Enter</strong> to drop to the next spot below; after the last spot it jumps to the top of the next hole. Leave a hole's column blank to skip it.</div>
+        <div class="moist-grid-scroll">
+          <div class="moist-grid5">${gridCells}</div>
+        </div>
+        <div class="modal-field" style="margin-top:14px;"><label>Notes (optional · applies to all)</label><input type="text" id="msg-notes" placeholder="e.g. early scan, fairways dry"></div>
+      </div>
+
+      <div id="ms-detail-view" style="display:none;">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;">Type a hole number and Tab through all 5 spots. Or use multi-select for bulk entry.</div>
       <div class="modal-row" style="align-items:flex-end;margin-bottom:12px;">
         <div class="modal-field" style="max-width:90px;margin:0;">
           <label>Hole #</label>
@@ -4319,14 +4475,15 @@ function openMoistureEntry(){
           <button class="hole-qs-btn" onclick="document.querySelectorAll('#moist-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'));document.getElementById('ms-hole').value='';">Clear</button>
         </div>
       </div>
+      </div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('moist-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="saveMoisture()">Save reading</button>
+        <button class="btn-green" onclick="saveMoistureDispatch()">Save reading</button>
       </div>
     </div>
   </div>`;
   document.getElementById('modal-container').innerHTML = html;
-  setTimeout(()=>{document.getElementById('ms-hole').focus();},50);
+  setTimeout(()=>{document.getElementById('msg-front-1').focus();},50);
 }
 function saveMoisture(){
   const selected = Array.from(document.querySelectorAll('#moist-modal .tiny-hole-btn.selected')).map(b=>parseInt(b.textContent));
@@ -4373,6 +4530,57 @@ function saveMoisture(){
   DATA.moisture.sort((a,b) => a.hole - b.hole);
   lsSave();
   showToast(selected.length+' reading'+(selected.length>1?'s':'')+' saved');
+  closeModal('moist-modal');
+  document.getElementById('modal-container').innerHTML = '';
+  renderMain();
+}
+
+// Quick grid: full 5-spot scan (Front/Middle/Back/Left/Right) for every green,
+// entered as a 5×18 matrix. A hole is logged if any of its spots has a value.
+function saveMoistureGrid(){
+  const SPOTS = ['front','middle','back','left','right'];
+  const notes = document.getElementById('msg-notes').value.trim();
+  const now = new Date();
+  const dateVal = document.getElementById('ms-date').value;
+  let isoDate, dateObj;
+  if(dateVal){
+    const [y,mo,d] = dateVal.split('-').map(Number);
+    dateObj = new Date(y, mo-1, d);
+    isoDate = dateVal;
+  } else {
+    dateObj = now;
+    isoDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  }
+  const ts = MONTHS_SHORT[dateObj.getMonth()]+' '+dateObj.getDate()+' · '+
+    (DATA.timeFormat==='24h'
+      ? String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')
+      : ((now.getHours()%12)||12)+':'+(String(now.getMinutes()).padStart(2,'0'))+(now.getHours()<12?'am':'pm'));
+
+  let count = 0;
+  for(let hole=1; hole<=18; hole++){
+    const spots = {};
+    SPOTS.forEach(spot=>{
+      const el = document.getElementById('msg-'+spot+'-'+hole);
+      if(el && el.value.trim()!==''){
+        const v = parseFloat(el.value);
+        if(!isNaN(v)) spots[spot] = v;
+      }
+    });
+    if(Object.keys(spots).length === 0) continue;   // no readings for this hole
+    const reading = { spots, ts, notes, isoDate };
+    const existing = DATA.moisture.find(m => m.hole === hole);
+    if(existing){
+      existing.readings.unshift(reading);
+      existing.readings.sort((a,b) => (b.isoDate||'').localeCompare(a.isoDate||''));
+    } else {
+      DATA.moisture.push({ hole, readings: [reading] });
+    }
+    count++;
+  }
+  if(count === 0) return showToast('Enter a reading for at least one hole', true);
+  DATA.moisture.sort((a,b) => a.hole - b.hole);
+  lsSave();
+  showToast(count+' reading'+(count>1?'s':'')+' saved');
   closeModal('moist-modal');
   document.getElementById('modal-container').innerHTML = '';
   renderMain();
@@ -5912,8 +6120,8 @@ function renderSprayLog(){
       <table class="spray-table">
         <thead><tr><th>Date</th><th>Area</th><th>Product</th><th>Rate</th><th>Applied by</th><th>Notes</th><th></th></tr></thead>
         <tbody>
-          ${DATA.sprayLog.map(s=>`
-            <tr><td>${s.date}</td><td>${s.area}</td><td><strong>${s.product}</strong></td><td>${s.rate}</td><td>${s.tech}</td><td>${s.notes}</td><td><div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div></td></tr>
+          ${DATA.sprayLog.map((s,i)=>`
+            <tr><td>${s.date}</td><td>${s.area}</td><td><strong>${s.product}</strong></td><td>${s.rate}</td><td>${s.tech}</td><td>${s.notes}</td><td><div class="row-actions"><button class="row-icon-btn" onclick="openSprayModal(${i})" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteSpray(${i})" title="Delete">×</button></div></td></tr>
           `).join('')}
         </tbody>
       </table>
@@ -5934,22 +6142,37 @@ function renderSprayLog(){
   `;
 }
 
-function openSprayModal(){
+// Convert a stored display date ("Apr 10") to ISO (yyyy-mm-dd) for the picker.
+function sprayDispToIso(disp){
+  if(!disp) return '';
+  const parts = disp.trim().split(/\s+/);
+  const mi = MONTHS_SHORT.indexOf(parts[0]);
+  const day = parseInt(parts[1]);
+  if(mi < 0 || isNaN(day)) return '';
+  return new Date().getFullYear()+'-'+String(mi+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+}
+function openSprayModal(idx){
+  const editing = (idx !== undefined && idx !== null);
+  const s = editing ? DATA.sprayLog[idx] : null;
+  if(editing && !s) return;
+  const dateIso = editing ? sprayDispToIso(s.date) : new Date().toISOString().split('T')[0];
+  const esc = v => (v==null?'':String(v)).replace(/"/g,'&quot;');
   const html = `
   <div class="modal-overlay open" id="spray-modal">
     <div class="modal-box">
-      <div class="modal-title">+ Log spray application</div>
+      <div class="modal-title">${editing?'✏ Edit spray application':'+ Log spray application'}</div>
+      <input type="hidden" id="sp-idx" value="${editing?idx:''}">
       <div class="modal-row">
-        <div class="modal-field"><label>Date</label><input type="date" id="sp-date" value="${new Date().toISOString().split('T')[0]}"></div>
-        <div class="modal-field"><label>Applied by</label><select id="sp-tech">${DATA.crew.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="modal-field"><label>Date</label><input type="date" id="sp-date" value="${dateIso}"></div>
+        <div class="modal-field"><label>Applied by</label><input type="text" id="sp-tech" value="${editing?esc(s.tech):''}" placeholder="e.g. Carlos R."></div>
       </div>
-      <div class="modal-field"><label>Area</label><input type="text" id="sp-area" placeholder="e.g. All greens, Fairways 1-6"></div>
-      <div class="modal-field"><label>Product</label><input type="text" id="sp-prod" placeholder="e.g. Daconil Action"></div>
-      <div class="modal-field"><label>Rate</label><input type="text" id="sp-rate" placeholder="e.g. 3.6 fl oz/1000"></div>
-      <div class="modal-field"><label>Notes</label><textarea id="sp-notes" style="height:60px;" placeholder="Weather, target pest, observations..."></textarea></div>
+      <div class="modal-field"><label>Area</label><input type="text" id="sp-area" value="${editing?esc(s.area):''}" placeholder="e.g. All greens, Fairways 1-6"></div>
+      <div class="modal-field"><label>Product</label><input type="text" id="sp-prod" value="${editing?esc(s.product):''}" placeholder="e.g. Daconil Action"></div>
+      <div class="modal-field"><label>Rate</label><input type="text" id="sp-rate" value="${editing?esc(s.rate):''}" placeholder="e.g. 3.6 fl oz/1000"></div>
+      <div class="modal-field"><label>Notes</label><textarea id="sp-notes" style="height:60px;" placeholder="Weather, target pest, observations...">${editing?(s.notes||''):''}</textarea></div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('spray-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="saveSpray()">Log application</button>
+        <button class="btn-green" onclick="saveSpray()">${editing?'Save changes':'Log application'}</button>
       </div>
     </div>
   </div>`;
@@ -5959,18 +6182,43 @@ function openSprayModal(){
 function saveSpray(){
   const area = document.getElementById('sp-area').value.trim();
   if(!area) return showToast('Enter area', true);
-  DATA.sprayLog.unshift({
-    date: MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(),
+  const idxVal = document.getElementById('sp-idx').value;
+  const editing = idxVal !== '';
+  const dateVal = document.getElementById('sp-date').value;
+  let date;
+  if(dateVal){
+    const [y,mo,d] = dateVal.split('-').map(Number);
+    date = MONTHS_SHORT[mo-1]+' '+d;
+  } else {
+    date = MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate();
+  }
+  const entry = {
+    date,
     area,
     product: document.getElementById('sp-prod').value,
     rate: document.getElementById('sp-rate').value,
     tech: document.getElementById('sp-tech').value,
     notes: document.getElementById('sp-notes').value
-  });
-  showToast('Spray logged');
+  };
+  if(editing){
+    DATA.sprayLog[parseInt(idxVal)] = entry;
+    showToast('Spray updated');
+  } else {
+    DATA.sprayLog.unshift(entry);
+    showToast('Spray logged');
+  }
+  lsSave();
   closeModal('spray-modal');
   document.getElementById('modal-container').innerHTML = '';
   renderMain();
+}
+function deleteSpray(idx){
+  if(!DATA.sprayLog[idx]) return;
+  if(!confirm('Delete this spray log entry?')) return;
+  DATA.sprayLog.splice(idx, 1);
+  lsSave();
+  renderMain();
+  showToast('Spray entry deleted');
 }
 
 function renderFertLog(){
@@ -5990,7 +6238,53 @@ function renderFertLog(){
   </div>
   `;
 }
-function openFertModal(){ showToast('Fertilizer log — use same flow as Spray'); }
+function openFertModal(){
+  const html = `
+  <div class="modal-overlay open" id="fert-modal">
+    <div class="modal-box">
+      <div class="modal-title">+ Log fertilizer application</div>
+      <div class="modal-row">
+        <div class="modal-field"><label>Date</label><input type="date" id="ft-date" value="${new Date().toISOString().split('T')[0]}"></div>
+        <div class="modal-field"><label>Applied by</label><select id="ft-tech">${DATA.crew.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      </div>
+      <div class="modal-field"><label>Area</label><input type="text" id="ft-area" placeholder="e.g. All greens, Fairways 1-6"></div>
+      <div class="modal-field"><label>Product</label><input type="text" id="ft-prod" placeholder="e.g. Nature Safe 8-3-5"></div>
+      <div class="modal-field"><label>Rate</label><input type="text" id="ft-rate" placeholder="e.g. 0.5 lb N/1000"></div>
+      <div class="modal-field"><label>Notes</label><textarea id="ft-notes" style="height:60px;" placeholder="Weather, target, observations..."></textarea></div>
+      <div class="modal-btns">
+        <button class="btn-outline" onclick="closeModal('fert-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
+        <button class="btn-green" onclick="saveFert()">Log application</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-container').innerHTML = html;
+  setTimeout(()=>{document.getElementById('ft-area').focus();},50);
+}
+function saveFert(){
+  const area = document.getElementById('ft-area').value.trim();
+  if(!area) return showToast('Enter area', true);
+  const dateVal = document.getElementById('ft-date').value;
+  let date;
+  if(dateVal){
+    const [y,mo,d] = dateVal.split('-').map(Number);
+    date = MONTHS_SHORT[mo-1]+' '+d;
+  } else {
+    date = MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate();
+  }
+  DATA.fertLog.unshift({
+    date,
+    area,
+    product: document.getElementById('ft-prod').value,
+    rate: document.getElementById('ft-rate').value,
+    tech: document.getElementById('ft-tech').value,
+    notes: document.getElementById('ft-notes').value
+  });
+  lsSave();
+  showToast('Fertilizer application logged');
+  closeModal('fert-modal');
+  document.getElementById('modal-container').innerHTML = '';
+  renderMain();
+}
 
 let selectedStimpHole = null;
 
@@ -6129,6 +6423,25 @@ function renderSettingsCourseInfo(){
       <div class="modal-btns"><button class="btn-green" onclick="saveCourseInfo()">Save changes</button></div>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-title">Turf &amp; Soil</div></div>
+    <div class="card-body">
+      <div class="modal-row">
+        <div class="modal-field"><label>Grass type</label>
+          <select id="ci-grass">
+            ${['Bentgrass','Poa annua','Bermudagrass','Ryegrass','Fescue','Zoysia','Kikuyu'].map(g=>`<option${DATA.grassType===g?' selected':''}>${g}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-field"><label>Soil type</label>
+          <select id="ci-soil">
+            ${['Sand-based (USGA)','Push-up / native soil','Sandy loam','Loam','Clay'].map(soil=>`<option${DATA.soilType===soil?' selected':''}>${soil}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="modal-btns"><button class="btn-green" onclick="saveCourseInfo()">Save changes</button></div>
+    </div>
+  </div>
   `;
 }
 
@@ -6143,15 +6456,27 @@ function saveCourseInfo(){
   if(first !== undefined) DATA.superFirstName = first;
   if(last  !== undefined) DATA.superLastName  = last;
   if(course) DATA.courseName = course;
+  const zipChanged = zip && zip !== DATA.zipCode;
   if(zip)    DATA.zipCode    = zip;
   if(addr)   DATA.courseAddress = addr;
   if(city)   DATA.courseCity    = city;
   if(state)  DATA.courseState   = state;
+  const grass = document.getElementById('ci-grass')?.value;
+  const soil  = document.getElementById('ci-soil')?.value;
+  if(grass) DATA.grassType = grass;
+  if(soil)  DATA.soilType  = soil;
   lsSave();
   // Update topbar course badge
   const badge = document.getElementById('courseBadge');
   if(badge && course) badge.textContent = course;
-  showToast('Settings saved');
+  // If the ZIP changed, re-point the weather at the new location and refresh now.
+  if(zipChanged){
+    DATA.weatherGeo = null;
+    fetchWeather();
+    showToast('Settings saved — updating weather for ' + zip);
+  } else {
+    showToast('Settings saved');
+  }
 }
 
 function renderSettingsEmployees(){
@@ -6162,8 +6487,8 @@ function renderSettingsEmployees(){
       <table class="mow-table">
         <thead><tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          ${DATA.crew.map(c=>`
-            <tr><td><strong>${c}</strong></td><td>Crew</td><td><span class="st-done">Active</span></td><td><div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div></td></tr>
+          ${DATA.crew.map((c,i)=>`
+            <tr><td><strong>${c}</strong></td><td>Crew</td><td><span class="st-done">Active</span></td><td><div class="row-actions"><button class="row-icon-btn" onclick="openEmployeeModal(${i})" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteEmployee(${i})" title="Delete">×</button></div></td></tr>
           `).join('')}
         </tbody>
       </table>
@@ -6183,12 +6508,16 @@ function renderSettingsEmployees(){
   `;
 }
 
-function openEmployeeModal(){
+let editingEmpIdx = null;
+function openEmployeeModal(idx){
+  editingEmpIdx = (typeof idx === 'number') ? idx : null;
+  const editing = editingEmpIdx !== null;
+  const name = editing ? DATA.crew[editingEmpIdx] : '';
   const html = `
   <div class="modal-overlay open" id="emp-modal">
     <div class="modal-box">
-      <div class="modal-title">+ Add employee</div>
-      <div class="modal-field"><label>Full name</label><input type="text" id="emp-name" placeholder="e.g. Alex Johnson"></div>
+      <div class="modal-title">${editing?'Edit employee':'+ Add employee'}</div>
+      <div class="modal-field"><label>Full name</label><input type="text" id="emp-name" placeholder="e.g. Alex Johnson" value="${(name||'').replace(/"/g,'&quot;')}"></div>
       <div class="modal-row">
         <div class="modal-field"><label>Role</label><select><option>Crew</option><option>Mechanic</option><option>Assistant</option><option>Superintendent</option></select></div>
         <div class="modal-field"><label>Status</label><select><option>Active</option><option>Seasonal</option><option>Inactive</option></select></div>
@@ -6196,7 +6525,7 @@ function openEmployeeModal(){
       <div class="modal-field"><label>Notes</label><textarea style="height:60px;" placeholder="Role specifics, certifications..."></textarea></div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('emp-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="saveEmployee()">Add</button>
+        <button class="btn-green" onclick="saveEmployee()">${editing?'Save changes':'Add'}</button>
       </div>
     </div>
   </div>`;
@@ -6206,11 +6535,31 @@ function openEmployeeModal(){
 function saveEmployee(){
   const name = document.getElementById('emp-name').value.trim();
   if(!name) return showToast('Enter name', true);
-  DATA.crew.push(name);
-  showToast('Employee added');
+  if(editingEmpIdx !== null){
+    const oldName = DATA.crew[editingEmpIdx];
+    DATA.crew[editingEmpIdx] = name;
+    // Keep existing job assignments pointing at the renamed crew member
+    if(oldName && oldName !== name) DATA.jobs.forEach(j=>{ if(j.crew===oldName) j.crew=name; });
+    showToast('Employee updated');
+  } else {
+    DATA.crew.push(name);
+    showToast('Employee added');
+  }
+  lsSave();
   closeModal('emp-modal');
   document.getElementById('modal-container').innerHTML = '';
   renderMain();
+}
+function deleteEmployee(idx){
+  const name = DATA.crew[idx];
+  if(name === undefined) return;
+  if(!confirm('Remove '+name+' from the crew list?')) return;
+  DATA.crew.splice(idx, 1);
+  // Unassign any jobs that were assigned to this person
+  DATA.jobs.forEach(j=>{ if(j.crew===name) j.crew='— Unassigned'; });
+  lsSave();
+  renderMain();
+  showToast('Employee removed');
 }
 
 function renderSettingsPreferences(){
@@ -6269,11 +6618,42 @@ function initDate(){
 /* ═══ WEATHER — Open-Meteo ═══ */
 let weatherData = {};
 function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val||'—';}
+const DEFAULT_GEO = {lat:42.2808, lon:-83.7430};
+// Turn the saved ZIP into coordinates so weather follows the course location.
+// Cached in DATA.weatherGeo and only re-looked-up when the ZIP changes.
+async function resolveGeo(){
+  const zip = (DATA.zipCode||'').trim();
+  if(DATA.weatherGeo && DATA.weatherGeo.zip===zip && DATA.weatherGeo.lat!=null){
+    return {lat:DATA.weatherGeo.lat, lon:DATA.weatherGeo.lon};
+  }
+  if(/^\d{5}$/.test(zip)){
+    try{
+      const r = await fetch('https://api.zippopotam.us/us/'+zip);
+      if(r.ok){
+        const j = await r.json();
+        const p = j.places && j.places[0];
+        const lat = p && parseFloat(p.latitude), lon = p && parseFloat(p.longitude);
+        if(lat!=null && lon!=null && !isNaN(lat) && !isNaN(lon)){
+          DATA.weatherGeo = {zip, lat, lon, place:(p['place name']||'')+', '+(p['state abbreviation']||'')};
+          lsSave();
+          return {lat, lon};
+        }
+      }
+    }catch(e){}
+  }
+  // Keep last known good location if the lookup failed; otherwise fall back to default.
+  if(DATA.weatherGeo && DATA.weatherGeo.lat!=null) return {lat:DATA.weatherGeo.lat, lon:DATA.weatherGeo.lon};
+  return DEFAULT_GEO;
+}
 async function fetchWeather(){
   try{
-    const url='https://api.open-meteo.com/v1/forecast?latitude=42.2808&longitude=-83.7430&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_gusts_10m,soil_temperature_0cm&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/Detroit&past_days=7&forecast_days=7';
+    const geo = await resolveGeo();
+    const url='https://api.open-meteo.com/v1/forecast?latitude='+geo.lat+'&longitude='+geo.lon+'&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_gusts_10m,soil_temperature_0cm&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=7&forecast_days=7';
     const r=await fetch(url);const d=await r.json();
     weatherData=d;updateWeatherUI(d);
+    // Persist a compact snapshot so the AI always has recent weather, even before a fetch completes.
+    const sum=buildWeatherSummary(d);
+    if(sum){ DATA.lastWeather=sum; lsSave(); }
   }catch(e){}
 }
 function updateWeatherUI(d){
