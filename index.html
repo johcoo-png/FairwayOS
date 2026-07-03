@@ -1503,7 +1503,13 @@ function renderMain(){
   }
   main.innerHTML = html;
   // Post-render hooks
-  if(activeSub === 'overview' && activeSection === 'today') initForecastChart();
+  if(activeSub === 'overview' && activeSection === 'today'){
+    initForecastChart();
+    // Re-apply weather to the freshly rebuilt strip (renderMain wipes it back to "Loading...")
+    if(weatherData && weatherData.current){
+      try{ updateWeatherUI(weatherData); }catch(e){ console.warn('Weather UI error:', e); }
+    }
+  }
   if(activeSub === 'speed' && activeSection === 'course') setTimeout(renderSpeedChart, 50);
   if(activeSub === 'calendar') renderMonthCalendar();
   lsSave();
@@ -1766,7 +1772,9 @@ const FORECAST_DATA = {
 };
 function initForecastChart(){
   drawForecastChart();
-  document.getElementById('fc-hours-axis').innerHTML = ['6a','8a','10a','12p','2p','4p','6p','8p','10p','12a','2a','4a'].map(h=>`<span>${h}</span>`).join('');
+  const axis = document.getElementById('fc-hours-axis');
+  if(!axis) return;
+  axis.innerHTML = ['6a','8a','10a','12p','2p','4p','6p','8p','10p','12a','2a','4a'].map(h=>`<span>${h}</span>`).join('');
 }
 function setForecastMetric(m, btn){
   forecastMetric = m;
@@ -6651,14 +6659,17 @@ async function fetchWeather(){
     const url='https://api.open-meteo.com/v1/forecast?latitude='+geo.lat+'&longitude='+geo.lon+'&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_gusts_10m,soil_temperature_0cm&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=7&forecast_days=7';
     const r=await fetch(url);const d=await r.json();
     weatherData=d;updateWeatherUI(d);
-    // Persist a compact snapshot so the AI always has recent weather, even before a fetch completes.
+    // Persist the full response + a compact AI snapshot so weather survives reloads.
+    DATA.weatherCache={ts:Date.now(), data:d};
     const sum=buildWeatherSummary(d);
-    if(sum){ DATA.lastWeather=sum; lsSave(); }
-  }catch(e){}
+    if(sum) DATA.lastWeather=sum;
+    lsSave();
+  }catch(e){ console.warn('Weather fetch failed:', e); }
 }
 function updateWeatherUI(d){
   const cur=d.current,daily=d.daily,hourly=d.hourly;
-  const today=new Date().toISOString().slice(0,10);
+  const now=new Date();
+  const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const ti=daily?.time?daily.time.indexOf(today):0;
   const todayIdx=ti>=0?ti:0;
   const temp=Math.round(cur.temperature_2m),dew=Math.round(cur.dew_point_2m);
@@ -6776,6 +6787,11 @@ function lsLoad(){
 
 function init(){
   lsLoad();
+  // Show cached weather immediately (if less than 24h old); fetchWeather() refreshes it after.
+  if(DATA.weatherCache && DATA.weatherCache.data && DATA.weatherCache.data.current
+     && Date.now()-DATA.weatherCache.ts < 24*60*60*1000){
+    weatherData = DATA.weatherCache.data;
+  }
   initDate();
   renderSidebar();
   renderMain();
