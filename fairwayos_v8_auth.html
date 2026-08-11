@@ -1044,7 +1044,7 @@ let selectedHoles = new Set([1]); // Multi-select state
 // Demo data (hardcoded per staging plan — will wipe at Supabase migration)
 const DATA = {
   courseName: 'Polo Fields CC',
-  zipCode: '48170',
+  zipCode: '',
   superFirstName: '',
   superLastName: '',
   timeFormat: '12h',
@@ -1057,7 +1057,7 @@ const DATA = {
     {id:0,title:'Check weather & ET',desc:'Review dew point, wind, rain forecast.',done:true,doneTime:'5:47am'},
     {id:1,title:'Fill out job board',desc:'Assign crew to mowing, spraying, hand-watering.',done:false,current:true},
     {id:2,title:'Review priority projects',desc:'2 urgent: sprinkler hole 11, Triplex #2 reel.',done:false,current:true,urgentCount:2},
-    {id:3,title:'Run irrigation agent',desc:'Confirm AI zone recs before 7am start.',done:false},
+    {id:3,title:'Run irrigation agent',desc:'Confirm Blade\'s zone recs before 7am start.',done:false},
     {id:4,title:'Log green speeds & moisture',desc:'Enter stimpmeter and 18-hole moisture scan.',done:false}
   ],
   
@@ -1417,8 +1417,8 @@ function getDynamicBadge(id){
     case 'projects':    { const c=DATA.projects.filter(p=>!p.completed&&(p.priority==='urgent'||p.priority==='high')).length; return c?{type:'red',count:c}:null; }
     case 'scouting':    { const c=DATA.scoutLog.filter(s=>s.status!=='Resolved').length; return c?{type:'amber',count:c}:null; }
     case 'workorders':  { const c=DATA.workOrders.filter(w=>w.status!=='complete').length; return c?{type:'red',count:c}:null; }
-    case 'svc-schedule':{ const c=DATA.equipment.filter(e=>e.alertType==='amber'||e.alertType==='red').length; return c?{type:'amber',count:c}:null; }
-    case 'irr-today':   { const c=DATA.moisture.filter(m=>{const r=m.readings&&m.readings[0];const vals=r?Object.values(r.spots).filter(v=>v!=null):[];return vals.length&&Math.min(...vals)<22;}).length; return c?{type:'red',count:c}:null; }
+    case 'svc-schedule':{ const statuses=DATA.equipment.map(equipmentServiceStatus); const c=statuses.filter(s=>s.type==='amber'||s.type==='red').length; return c?{type:statuses.some(s=>s.type==='red')?'red':'amber',count:c}:null; }
+    case 'irr-today':   { const alerts=getHandWaterAlerts(); return alerts.length?{type:alerts.some(a=>a.effectiveUrgent)?'red':'amber',count:alerts.length}:null; }
     default: return null;
   }
 }
@@ -1503,7 +1503,13 @@ function renderMain(){
   }
   main.innerHTML = html;
   // Post-render hooks
-  if(activeSub === 'overview' && activeSection === 'today') initForecastChart();
+  if(activeSub === 'overview' && activeSection === 'today'){
+    initForecastChart();
+    // Re-apply weather to the freshly rebuilt strip (renderMain wipes it back to "Loading...")
+    if(weatherData && weatherData.current){
+      try{ updateWeatherUI(weatherData); }catch(e){ console.warn('Weather UI error:', e); }
+    }
+  }
   if(activeSub === 'speed' && activeSection === 'course') setTimeout(renderSpeedChart, 50);
   if(activeSub === 'calendar') renderMonthCalendar();
   lsSave();
@@ -1513,7 +1519,7 @@ function renderMain(){
 /* ═══ TODAY → OVERVIEW ═══ */
 function renderTodayOverview(){
   // Count open scouting, moisture alerts, etc.
-  const moistUrg = DATA.moisture.filter(m => { const r=m.readings&&m.readings[0]; return r&&Object.values(r.spots).filter(v=>v!=null).length&&Math.min(...Object.values(r.spots).filter(v=>v!=null))<20; }).length;
+  const moistUrg = getHandWaterAlerts().filter(a => a.effectiveUrgent).length;
   const scoutOpen = DATA.scoutLog.filter(s => s.status !== 'Resolved').length;
   const scoutUrg = DATA.scoutLog.filter(s => s.sev === 'Urgent').length;
   const scoutHigh = DATA.scoutLog.filter(s => s.sev === 'High' || s.sev === 'Moderate').length;
@@ -1522,12 +1528,18 @@ function renderTodayOverview(){
   const nextSpray = DATA.upcomingSprays[0];
   
   return `
+  ${!hasZip() ? `
+  <div style="background:var(--amber-100);border:1px solid var(--amber-600);border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:14px;cursor:pointer;" onclick="navTo('settings','courseinfo')">
+    <div style="font-size:13px;font-weight:700;color:var(--amber-600);margin-bottom:4px;">⚠ Enter zip code in Settings</div>
+    <div style="font-size:12px;color:var(--text-secondary);">No zip code is on file for this course, so weather and forecast can't be shown. Click here to add one.</div>
+  </div>
+  ` : `
   <div class="weather-strip">
     <div class="wc hi" onmouseenter="posTooltip(event,this)">
       <div class="wc-val wc-loading" id="wv-temp">—</div><div class="wc-lbl">Temperature</div>
       <div class="wc-trend" id="wt-temp">Loading...</div><div class="wc-ext-link">↗ weather.com</div>
       <div class="wc-tooltip" id="tt-temp">
-        <div class="wt-title">🌡 Temperature — Ann Arbor</div>
+        <div class="wt-title">🌡 Temperature — <span id="tt-temp-place">—</span></div>
         <div class="wt-row"><span>Right now</span><span class="wt-val" id="tt-temp-now">—</span></div>
         <div class="wt-row"><span>High today</span><span class="wt-val" id="tt-temp-high">—</span></div>
         <div class="wt-row"><span>Low tonight</span><span class="wt-val" id="tt-temp-low">—</span></div>
@@ -1540,7 +1552,7 @@ function renderTodayOverview(){
       <div class="wc-val wc-loading" id="wv-dew">—</div><div class="wc-lbl">Dew Point</div>
       <div class="wc-trend" id="wt-dew">Loading...</div><div class="wc-ext-link">↗ weather.com</div>
       <div class="wc-tooltip" id="tt-dew">
-        <div class="wt-title">💧 Dew Point — Ann Arbor</div>
+        <div class="wt-title">💧 Dew Point — <span id="tt-dew-place">—</span></div>
         <div class="wt-row"><span>Now</span><span class="wt-val" id="tt-dew-now">—</span></div>
         <div class="wt-row"><span>Dollar spot risk</span><span class="wt-val" id="tt-dew-risk">—</span></div>
         <div class="wt-row"><span>Risk window</span><span class="wt-val" id="tt-dew-win">—</span></div>
@@ -1553,7 +1565,7 @@ function renderTodayOverview(){
       <div class="wc-val wc-loading" id="wv-hum">—</div><div class="wc-lbl">Humidity</div>
       <div class="wc-trend" id="wt-hum">Loading...</div><div class="wc-ext-link">↗ weather.com</div>
       <div class="wc-tooltip" id="tt-hum">
-        <div class="wt-title">☁ Humidity — Ann Arbor</div>
+        <div class="wt-title">☁ Humidity — <span id="tt-hum-place">—</span></div>
         <div class="wt-row"><span>Now</span><span class="wt-val" id="tt-hum-now">—</span></div>
         <div class="wt-row"><span>Morning peak</span><span class="wt-val" id="tt-hum-peak">—</span></div>
         <div class="wt-row"><span>Afternoon low</span><span class="wt-val" id="tt-hum-low">—</span></div>
@@ -1566,7 +1578,7 @@ function renderTodayOverview(){
       <div class="wc-val wc-loading" id="wv-precip">—</div><div class="wc-lbl">Precipitation</div>
       <div class="wc-trend" id="wt-precip">Loading...</div><div class="wc-ext-link">↗ weather.com</div>
       <div class="wc-tooltip" id="tt-precip">
-        <div class="wt-title">🌧 Precipitation — Ann Arbor</div>
+        <div class="wt-title">🌧 Precipitation — <span id="tt-precip-place">—</span></div>
         <div class="wt-row"><span>Today</span><span class="wt-val" id="tt-precip-today">—</span></div>
         <div class="wt-row"><span>Tomorrow</span><span class="wt-val" id="tt-precip-tom">—</span></div>
         <div class="wt-row"><span>Past 7 days</span><span class="wt-val" id="tt-precip-week">—</span></div>
@@ -1579,7 +1591,7 @@ function renderTodayOverview(){
       <div class="wc-val wc-loading" id="wv-wind">—</div><div class="wc-lbl">Wind</div>
       <div class="wc-trend" id="wt-wind">Loading...</div><div class="wc-ext-link">↗ weather.com</div>
       <div class="wc-tooltip" id="tt-wind">
-        <div class="wt-title">💨 Wind — Ann Arbor</div>
+        <div class="wt-title">💨 Wind — <span id="tt-wind-place">—</span></div>
         <div class="wt-row"><span>Now</span><span class="wt-val" id="tt-wind-now">—</span></div>
         <div class="wt-row"><span>Gusts</span><span class="wt-val" id="tt-wind-gusts">—</span></div>
         <div class="wt-row"><span>Spray safe?</span><span class="wt-val" id="tt-wind-spray">—</span></div>
@@ -1589,11 +1601,32 @@ function renderTodayOverview(){
       </div>
     </div>
   </div>
-  
+
+  <div class="forecast-wrap">
+    <div class="fc-top">
+      <div class="fc-head">
+        <div class="fc-title">24-Hour Forecast</div>
+        <div class="fc-metrics">
+          <button class="fc-metric-btn active" onclick="setForecastMetric('temp',this)">Temp</button>
+          <button class="fc-metric-btn" onclick="setForecastMetric('precip',this)">Precip</button>
+          <button class="fc-metric-btn" onclick="setForecastMetric('wind',this)">Wind</button>
+          <button class="fc-metric-btn" onclick="setForecastMetric('hum',this)">Humidity</button>
+        </div>
+      </div>
+      <div class="fc-chart-area"><svg id="fc-chart-svg" width="100%" height="100%"></svg></div>
+      <div class="fc-hours-axis" id="fc-hours-axis"></div>
+    </div>
+    <div class="fc-5day">
+      <div class="fc-5day-head">5-Day Forecast</div>
+      <div class="fc-5day-grid" id="fc-5day-grid"></div>
+    </div>
+  </div>
+  `}
+
   <div class="ai-brief" onclick="openAIBriefing()">
     <div class="ai-brief-chevron">→</div>
-    <div class="ai-brief-hd"><span>✦</span> AI morning briefing · click to chat</div>
-    <div class="ai-brief-txt">Overnight run completed normal. 6 greens flagged for hand watering — priority Green 8 (dry spot NW). Rain forecast 40% tomorrow after 11am. Dollar spot risk elevated — dew point 54°F. Preventative spray window Friday morning.</div>
+    <div class="ai-brief-hd"><span>✦</span> Blade's morning briefing · click to chat</div>
+    <div class="ai-brief-txt" id="today-brief-txt">${morningBriefText()}</div>
   </div>
   
   <div class="ov-five">
@@ -1602,7 +1635,7 @@ function renderTodayOverview(){
       <div class="ov-stat">${moistUrg}</div>
       <div class="ov-sub">Spots below threshold</div>
       ${(()=>{
-        const urgHoles = DATA.moisture.filter(m=>{const r=m.readings&&m.readings[0];return r&&Object.values(r.spots).filter(v=>v!=null).some(v=>v<20);}).map(m=>'Green '+m.hole);
+        const urgHoles = getHandWaterAlerts().filter(a=>a.effectiveUrgent).map(a=>'Green '+a.hole);
         return urgHoles.length
           ? '<div class="ov-alert ov-alert-red">'+urgHoles.slice(0,3).join(' · ')+(urgHoles.length>3?' +more':'')+'</div>'
           : '<div class="ov-alert ov-alert-green">All greens OK</div>';
@@ -1758,15 +1791,41 @@ function renderUpcomingList(){
 }
 
 let forecastMetric = 'temp';
-const FORECAST_DATA = {
-  temp:{vals:[58,60,64,67,70,72,73,72,70,66,62,59],label:'°F',color:'#3B7A1B',range:[50,80]},
-  precip:{vals:[0,0,5,10,15,20,25,30,35,40,30,20],label:'%',color:'#2563A8',range:[0,100]},
-  wind:{vals:[6,7,8,9,10,11,12,11,9,7,6,5],label:'mph',color:'#6B4E8A',range:[0,20]},
-  hum:{vals:[72,68,62,55,50,48,48,52,58,65,72,78],label:'%',color:'#2E8B8B',range:[30,90]}
+const FORECAST_META = {
+  temp: {key:'temperature_2m',        label:'°F', color:'#3B7A1B', pad:5},
+  precip:{key:'precipitation_probability', label:'%',  color:'#2563A8', pad:5, fixedRange:[0,100]},
+  wind: {key:'wind_speed_10m',        label:'mph',color:'#6B4E8A', pad:2},
+  hum:  {key:'relative_humidity_2m',  label:'%',  color:'#2E8B8B', pad:5, fixedRange:[0,100]}
 };
+// Pulls the next 24h (2-hour steps) of real forecast data out of the Open-Meteo
+// response already fetched into weatherData — no more hardcoded demo values.
+function getForecastSeries(metric){
+  const hourly = weatherData && weatherData.hourly;
+  const meta = FORECAST_META[metric];
+  if(!hourly || !hourly.time || !hourly[meta.key]) return null;
+  const now = new Date();
+  let startIdx = hourly.time.findIndex(t => new Date(t) >= now);
+  if(startIdx < 0) startIdx = 0;
+  const idxs = [];
+  for(let i=startIdx; idxs.length<12 && i<hourly.time.length; i+=2) idxs.push(i);
+  if(!idxs.length) return null;
+  const vals = idxs.map(i => Math.round(hourly[meta.key][i]));
+  const times = idxs.map(i => hourly.time[i]);
+  let range;
+  if(meta.fixedRange) range = meta.fixedRange;
+  else { const mn=Math.min(...vals), mx=Math.max(...vals); range = [mn-meta.pad, mx+meta.pad]; }
+  return {vals, times, range, label:meta.label, color:meta.color};
+}
+function formatForecastHour(iso){
+  const d = new Date(iso);
+  let h = d.getHours();
+  const ap = h>=12 ? 'p':'a';
+  h = h%12; if(h===0) h=12;
+  return h+ap;
+}
 function initForecastChart(){
   drawForecastChart();
-  document.getElementById('fc-hours-axis').innerHTML = ['6a','8a','10a','12p','2p','4p','6p','8p','10p','12a','2a','4a'].map(h=>`<span>${h}</span>`).join('');
+  updateForecast5Day();
 }
 function setForecastMetric(m, btn){
   forecastMetric = m;
@@ -1776,17 +1835,25 @@ function setForecastMetric(m, btn){
 }
 function drawForecastChart(){
   const svg = document.getElementById('fc-chart-svg');
+  const axis = document.getElementById('fc-hours-axis');
   if(!svg) return;
-  const data = FORECAST_DATA[forecastMetric];
-  const w = svg.clientWidth, h = svg.clientHeight;
+  const data = getForecastSeries(forecastMetric);
+  if(!data){
+    svg.innerHTML = '';
+    if(axis){ axis.style.paddingLeft = '0'; axis.innerHTML = '<span>Loading forecast…</span>'; }
+    return;
+  }
+  // Reserve a left gutter for the Y-axis value labels; the plotted area and the
+  // hour labels below both start after it so points line up with their hour.
+  const padL = 34, padT = 8, padB = 8;
+  const fullW = svg.clientWidth, fullH = svg.clientHeight;
+  const w = fullW - padL, h = fullH - padT - padB;
   const [mn,mx] = data.range;
-  const pts = data.vals.map((v,i)=>{
-    const x = (i/(data.vals.length-1))*w;
-    const y = h - ((v-mn)/(mx-mn))*h;
-    return [x,y];
-  });
+  const yFor = v => padT + h - ((v-mn)/(mx-mn))*h;
+  const pts = data.vals.map((v,i)=>[padL + (i/(data.vals.length-1))*w, yFor(v)]);
   const pathD = 'M '+pts.map(p=>p.join(',')).join(' L ');
-  const areaD = pathD + ` L ${w},${h} L 0,${h} Z`;
+  const areaD = pathD + ` L ${padL+w},${padT+h} L ${padL},${padT+h} Z`;
+  const mid = Math.round((mn+mx)/2);
   let svgContent = `
     <defs>
       <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
@@ -1794,13 +1861,51 @@ function drawForecastChart(){
         <stop offset="100%" stop-color="${data.color}" stop-opacity="0"/>
       </linearGradient>
     </defs>
+    <line x1="${padL}" y1="${padT+h}" x2="${fullW}" y2="${padT+h}" stroke="var(--border)" stroke-width="1"/>
+    <line x1="${padL}" y1="${yFor(mid)}" x2="${fullW}" y2="${yFor(mid)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>
+    <line x1="${padL}" y1="${padT}" x2="${fullW}" y2="${padT}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>
+    <text x="${padL-6}" y="${padT+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${Math.round(mx)}${data.label}</text>
+    <text x="${padL-6}" y="${yFor(mid)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${mid}${data.label}</text>
+    <text x="${padL-6}" y="${padT+h+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${Math.round(mn)}${data.label}</text>
     <path d="${areaD}" fill="url(#grad)"/>
     <path d="${pathD}" fill="none" stroke="${data.color}" stroke-width="2.5"/>
   `;
   pts.forEach((p,i)=>{
-    svgContent += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${data.color}" stroke="#fff" stroke-width="1.5"><title>Hr ${i}: ${data.vals[i]}${data.label}</title></circle>`;
+    svgContent += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${data.color}" stroke="#fff" stroke-width="1.5"><title>${formatForecastHour(data.times[i])}: ${data.vals[i]}${data.label}</title></circle>`;
   });
   svg.innerHTML = svgContent;
+  if(axis){
+    axis.style.paddingLeft = padL+'px';
+    axis.innerHTML = data.times.map(t=>`<span>${formatForecastHour(t)}</span>`).join('');
+  }
+}
+// Builds the 5-day outlook grid from the real Open-Meteo daily response.
+function updateForecast5Day(){
+  const grid = document.getElementById('fc-5day-grid');
+  if(!grid) return;
+  const daily = weatherData && weatherData.daily;
+  if(!daily || !daily.time){ grid.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px;">Loading…</div>'; return; }
+  const now = new Date();
+  const today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  let ti = daily.time.indexOf(today);
+  if(ti < 0) ti = 0;
+  let html = '';
+  for(let i=ti; i<ti+5 && i<daily.time.length; i++){
+    const d = new Date(daily.time[i]+'T00:00:00');
+    const name = i===ti ? 'Today' : DAYS_SHORT[d.getDay()];
+    const hi = Math.round(daily.temperature_2m_max[i]);
+    const lo = Math.round(daily.temperature_2m_min[i]);
+    const pop = daily.precipitation_probability_max[i];
+    const icon = pop>=50 ? '🌧' : pop>=20 ? '🌥' : '☀';
+    html += `<div class="fc-day">
+      <div class="fc-day-name">${name}</div>
+      <div class="fc-day-icon">${icon}</div>
+      <div class="fc-day-high">${hi}°</div>
+      <div class="fc-day-low">${lo}°</div>
+      <div class="fc-day-precip">${pop}% rain</div>
+    </div>`;
+  }
+  grid.innerHTML = html;
 }
 
 function toggleRoutine(id){
@@ -1829,7 +1934,7 @@ function toggleRoutine(id){
 }
 
 function openAIBriefing(){
-  openSidePanel('✦ AI Morning Briefing', `
+  openSidePanel('✦ Blade — Morning Briefing', `
     <div class="sp-section">
       <div class="sp-section-hd">Today's overview</div>
       <div style="font-size:12px;line-height:1.6;color:var(--text-primary);background:var(--green-50);padding:12px;border-radius:9px;border:1px solid var(--green-200);">
@@ -1839,7 +1944,7 @@ function openAIBriefing(){
     <div class="sp-section">
       <div class="sp-section-hd">Ask a question</div>
       <textarea placeholder='e.g. "Why is moisture low on 7?" or "What should I spray tomorrow?"' style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border-medium);font-size:12px;background:var(--bg-field);font-family:var(--font);min-height:80px;" id="ai-ask-input"></textarea>
-      <button class="btn-green" style="margin-top:8px;" onclick="askAI()">Ask agent</button>
+      <button class="btn-green" style="margin-top:8px;" onclick="askAI()">Ask Blade</button>
     </div>
     <div class="sp-section">
       <div class="sp-section-hd">Suggested questions</div>
@@ -1851,7 +1956,7 @@ function openAIBriefing(){
       </div>
     </div>
     <div class="sp-section" id="ai-response-wrap" style="display:none;">
-      <div class="sp-section-hd">Agent response</div>
+      <div class="sp-section-hd">Blade's response</div>
       <div id="ai-response-txt" style="font-size:12px;line-height:1.55;color:var(--text-primary);padding:10px;background:var(--bg-field);border-radius:8px;"></div>
     </div>
   `);
@@ -1865,7 +1970,7 @@ function askAI(){
   if(!q) return showToast('Enter a question first', true);
   document.getElementById('ai-response-wrap').style.display = 'block';
   const out = document.getElementById('ai-response-txt');
-  out.innerHTML = '<span class="spin"></span> Claude is analyzing your data...';
+  out.innerHTML = '<span class="spin"></span> Blade is analyzing your data...';
   askClaude(q)
     .then(ans => { out.innerHTML = formatAIText(ans); })
     .catch(() => { out.innerHTML = aiAnswer(q); }); // offline / not configured → local analysis
@@ -3102,32 +3207,38 @@ function saveEvent(){
 
 /* ═══ IRRIGATION AGENT — 3 subsections ═══ */
 function renderIrrToday(){
-  // Compute hand-water alerts from moisture 5-spot data
-  const urgGreens = DATA.moisture.filter(m => { const r=m.readings&&m.readings[0]; const vals=r?Object.values(r.spots).filter(v=>v!=null):[]; return vals.length&&Math.min(...vals)<22; });
-  
+  // Hand-water alerts now come straight from the weather-aware moisture engine
+  // (analyzeMoisture → getHandWaterAlerts) instead of a separate raw threshold.
+  const alerts = getHandWaterAlerts();
+  const urgentAlerts = alerts.filter(a => a.effectiveUrgent);
+  const etAdj = moistureWeatherAdjustment();
+  const title = urgentAlerts.length ? '🚨 Hand water before crew starts'
+    : alerts.length ? '🌧 Dry spots logged, but rain expected — monitoring only'
+    : '✅ No urgent hand watering';
+
   return `
   <div class="irr-brief" onclick="openIrrBriefing()">
     <div class="ai-brief-chevron" style="top:16px;right:20px;">→</div>
-    <div class="irr-brief-hd"><span>✦</span> AI MORNING IRRIGATION BRIEFING · BETA · click to chat</div>
+    <div class="irr-brief-hd"><span>✦</span> BLADE — MORNING IRRIGATION BRIEFING · BETA · click to chat</div>
     <div class="irr-brief-txt">${irrBriefText()}</div>
   </div>
-  
-  <div class="irr-hand-water${urgGreens.length===0?' empty':''}">
-    <div class="irr-hw-title">${urgGreens.length===0?'✅ No urgent hand watering':'🚨 Hand water before crew starts'}</div>
-    ${urgGreens.length>0?`
+
+  <div class="irr-hand-water${alerts.length===0?' empty':''}">
+    <div class="irr-hw-title">${title}</div>
+    ${etAdj.etLabel?`<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Thresholds tightened for heat/wind — ${etAdj.etLabel} accelerating drying.</div>`:''}
+    ${alerts.length>0?`
       <div class="irr-hw-grid">
-        ${urgGreens.map(m=>{
-          const r = m.readings[0];
-          const vals = Object.values(r.spots).filter(v=>v!=null);
-          const low = Math.min(...vals);
-          const lowSpot = Object.keys(r.spots).find(k => r.spots[k] === low);
+        ${alerts.map(f=>{
+          const lowSpot = f.label.toLowerCase();
+          const flagTxt = f.effectiveUrgent ? 'URGENT' : f.rainSuppressed ? 'RAIN EXPECTED' : 'NEEDS ATTN';
+          const flagClr = f.effectiveUrgent ? 'var(--red-600)' : f.rainSuppressed ? 'var(--blue-600)' : 'var(--amber-600)';
           return `
-            <div class="irr-hw-card" onclick="openMoistureDetail(${m.hole})">
-              <div class="irr-hw-hole">GREEN ${m.hole}</div>
-              <div class="irr-hw-val">${low}%</div>
-              <div class="irr-hw-flag">${low < 19 ? 'URGENT' : 'NEEDS ATTN'}</div>
-              <div class="irr-hw-spot">${lowSpot.charAt(0).toUpperCase()+lowSpot.slice(1)} spot · 12 min recommended</div>
-              <button class="irr-hw-mark" onclick="event.stopPropagation();markWatered(${m.hole})">Mark watered</button>
+            <div class="irr-hw-card" onclick="openMoistureDetail(${f.hole})">
+              <div class="irr-hw-hole">GREEN ${f.hole}</div>
+              <div class="irr-hw-val">${f.latest}%</div>
+              <div class="irr-hw-flag" style="color:${flagClr};">${flagTxt}</div>
+              <div class="irr-hw-spot">${lowSpot.charAt(0).toUpperCase()+lowSpot.slice(1)} spot${f.rainSuppressed?` · ${f.rainPct}% rain chance`:' · 12 min recommended'}</div>
+              <button class="irr-hw-mark" onclick="event.stopPropagation();markWatered(${f.hole})">Mark watered</button>
             </div>
           `;
         }).join('')}
@@ -3136,7 +3247,7 @@ function renderIrrToday(){
   </div>
   
   <div class="card">
-    <div class="card-head"><div class="card-title">Ask the irrigation agent</div><div class="ai-chip">✦ AI</div></div>
+    <div class="card-head"><div class="card-title">Ask Blade</div><div class="ai-chip">✦ Blade</div></div>
     <div class="card-body">
       <textarea id="irr-ask-input" placeholder='e.g. "We have a tournament Saturday — greens need to be firm." or "Why is Green 8 dry again?"' style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border-medium);font-size:12px;background:var(--bg-field);font-family:var(--font);min-height:70px;margin-bottom:8px;"></textarea>
       <button class="btn-green" onclick="runIrrAgent()">Run agent</button>
@@ -3147,40 +3258,14 @@ function renderIrrToday(){
   <div class="card">
     <div class="card-head"><div class="card-title">Tonight's plan</div><div style="display:flex;gap:6px;"><button class="btn-outline">Show all zones</button><button class="btn-green" onclick="showToast('Plan approved — copy to Toro NSN')">✓ Approve plan</button></div></div>
     <div class="card-body">
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">Showing 4 zones with adjustments. Other zones running baseline.</div>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        <div class="svc-row" style="grid-template-columns:90px 1fr 1fr auto;">
-          <div><span class="svc-urg overdue" style="background:var(--red-100);color:var(--red-600);border-color:var(--red-600);">HOLD</span></div>
-          <div><div class="svc-machine">Fairways 6-7</div><div class="svc-type">Rain forecast 40% after 11pm</div></div>
-          <div class="svc-hours">Baseline: 18 min · Adj: <strong>0 min</strong></div>
-          <button class="btn-outline">Edit</button>
-        </div>
-        <div class="svc-row" style="grid-template-columns:90px 1fr 1fr auto;">
-          <div><span class="svc-urg soon" style="background:var(--amber-100);color:var(--amber-600);border-color:var(--amber-600);">+EXTEND</span></div>
-          <div><div class="svc-machine">Green 8</div><div class="svc-type">Dry trend — recurring NW corner</div></div>
-          <div class="svc-hours">Baseline: 12 min · Adj: <strong>17 min</strong></div>
-          <button class="btn-outline">Edit</button>
-        </div>
-        <div class="svc-row" style="grid-template-columns:90px 1fr 1fr auto;">
-          <div><span class="svc-urg overdue" style="background:var(--red-100);color:var(--red-600);border-color:var(--red-600);">SKIP</span></div>
-          <div><div class="svc-machine">Fairway 11</div><div class="svc-type">Broken head (from Projects)</div></div>
-          <div class="svc-hours">Baseline: 18 min · Adj: <strong>offline</strong></div>
-          <button class="btn-outline">Edit</button>
-        </div>
-        <div class="svc-row" style="grid-template-columns:90px 1fr 1fr auto;">
-          <div><span class="svc-urg soon" style="background:var(--amber-100);color:var(--amber-600);border-color:var(--amber-600);">-REDUCE</span></div>
-          <div><div class="svc-machine">All greens</div><div class="svc-type">Tournament Saturday → firmer</div></div>
-          <div class="svc-hours">Baseline: 12 min · Adj: <strong>10 min</strong></div>
-          <button class="btn-outline">Edit</button>
-        </div>
-      </div>
+      ${renderTonightsPlanRows()}
       <div style="margin-top:14px;display:flex;gap:8px;">
         <button class="btn-outline">📋 Copy schedule</button>
         <button class="btn-outline">⬇ Export</button>
       </div>
     </div>
   </div>
-  
+
   <div class="irr-phase2">
     <div class="irr-phase2-hd">Phase 2 · Coming soon</div>
     <div class="irr-phase2-txt">Direct Toro NSN / Rain Bird hardware integration. Push approved plan directly to controller — no manual entry. In development.</div>
@@ -3222,8 +3307,8 @@ function runIrrAgent(){
   if(!q) return showToast('Enter a question', true);
   const resp = document.getElementById('irr-agent-resp');
   resp.style.display = 'block';
-  resp.innerHTML = '<div class="ai-suggest"><div class="ai-suggest-hd"><span class="spin"></span> Claude is analyzing...</div></div>';
-  const render = (txt) => { resp.innerHTML = `<div class="ai-suggest"><div class="ai-suggest-hd">✦ AI RECOMMENDATION</div><div class="ai-suggest-txt">${txt}</div></div>`; };
+  resp.innerHTML = '<div class="ai-suggest"><div class="ai-suggest-hd"><span class="spin"></span> Blade is analyzing...</div></div>';
+  const render = (txt) => { resp.innerHTML = `<div class="ai-suggest"><div class="ai-suggest-hd">✦ BLADE RECOMMENDATION</div><div class="ai-suggest-txt">${txt}</div></div>`; };
   askClaude(q)
     .then(ans => render(formatAIText(ans)))
     .catch(() => render(aiAnswer(q))); // offline / not configured → local analysis
@@ -3238,10 +3323,12 @@ function markWatered(hole){
     crew: 'Cooper',
     notes: 'Auto-logged from alert'
   });
-  // Remove from moisture urgents (simulate)
+  // Remove from moisture urgents (simulate) — clear comfortably above the
+  // engine's dry threshold, which itself moves up under heat/wind stress.
   const mEntry = DATA.moisture.find(mm=>mm.hole===hole);
   if(mEntry && mEntry.readings && mEntry.readings[0]){
-    Object.keys(mEntry.readings[0].spots).forEach(k=>{ if(mEntry.readings[0].spots[k] != null && mEntry.readings[0].spots[k] < 22) mEntry.readings[0].spots[k] = 24; });
+    const dryT = 23 + moistureWeatherAdjustment().thresholdBump;
+    Object.keys(mEntry.readings[0].spots).forEach(k=>{ if(mEntry.readings[0].spots[k] != null && mEntry.readings[0].spots[k] < dryT) mEntry.readings[0].spots[k] = dryT + 5; });
   }
   showToast('Green '+hole+' marked watered · logged to hand water log');
   renderMain();
@@ -3257,8 +3344,25 @@ function openMoistureDetail(hole){
   const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   const lowSpot = Object.keys(spots).find(k => spots[k] === low);
   const readings = entry.readings;
-  const spotColor = v => v < 19 ? 'spot-dry' : v < 23 ? 'spot-attn' : v < 28 ? 'spot-ok' : 'spot-wet';
-  const sc = v => v==null?'var(--text-muted)':v<22?'var(--red-600)':v<28?'var(--green-700)':'var(--blue-600)';
+  // Same thresholds the moisture engine uses, so this panel's colors and the
+  // dashboard's alerts never disagree — both move with heat/wind/rain.
+  const adj = moistureWeatherAdjustment();
+  const dryT = 23 + adj.thresholdBump, urgT = 19 + adj.thresholdBump;
+  const spotColor = v => v < urgT ? 'spot-dry' : v < dryT ? 'spot-attn' : v < dryT+5 ? 'spot-ok' : 'spot-wet';
+  const sc = v => v==null?'var(--text-muted)':v<dryT?'var(--red-600)':v<dryT+5?'var(--green-700)':'var(--blue-600)';
+  const finding = getHandWaterAlerts().find(a => a.hole === hole);
+  const w = weatherSignals();
+  const recParts = [];
+  if(finding){
+    recParts.push(`${finding.effectiveUrgent?'Hand water ~12 min':'Monitor'} focused on ${lowSpot} spot (${low}%, threshold ${urgT}%).`);
+    if(finding.rainSuppressed) recParts.push(`Rain chance ${finding.rainPct}% — holding off on hand-watering, likely resolves naturally.`);
+    else if(finding.consistent) recParts.push(`Dry on every one of the last ${finding.n} readings — looks like a coverage issue, not just weather.`);
+  } else {
+    recParts.push(`No watering needed — ${lowSpot} spot reading a healthy ${low}% (threshold ${dryT}%).`);
+  }
+  if(adj.etLabel) recParts.push(`Elevated ET from ${adj.etLabel} — moisture will drop faster than usual before the next check.`);
+  if(w && w.dewRisk!=='Low') recParts.push(`Dollar spot risk ${w.dewRisk.toLowerCase()} — dew point ${w.dew}°F.`);
+  const recommendation = recParts.join(' ');
 
   openSidePanel('Green '+hole+' — Moisture Detail', `
     <div class="sp-section">
@@ -3271,7 +3375,7 @@ function openMoistureDetail(hole){
           <div class="green-spot gs-right ${spotColor(spots.right)}"></div>
         </div>
         <div>
-          <div style="font-size:26px;font-weight:800;color:${low<22?'var(--red-600)':'var(--green-700)'};">${low}%</div>
+          <div style="font-size:26px;font-weight:800;color:${low<dryT?'var(--red-600)':'var(--green-700)'};">${low}%</div>
           <div style="font-size:11px;color:var(--text-muted);">Lowest spot (${lowSpot})</div>
           <div style="margin-top:6px;font-size:12px;color:var(--text-secondary);">Avg ${avg}% · ${r.ts}</div>
           <div style="margin-top:3px;font-size:10px;color:var(--text-muted);">${readings.length} reading${readings.length!==1?'s':''} on file</div>
@@ -3284,15 +3388,15 @@ function openMoistureDetail(hole){
         ${['front','middle','back','left','right'].map(k=>`
           <div style="background:var(--bg-field);padding:8px 4px;border-radius:6px;">
             <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;">${k}</div>
-            <div style="font-size:14px;font-weight:700;margin-top:2px;color:${spots[k]==null?'var(--text-muted)':spots[k]<22?'var(--red-600)':'var(--text-primary)'};">${spots[k]!=null?spots[k]+'%':'—'}</div>
+            <div style="font-size:14px;font-weight:700;margin-top:2px;color:${spots[k]==null?'var(--text-muted)':spots[k]<dryT?'var(--red-600)':'var(--text-primary)'};">${spots[k]!=null?spots[k]+'%':'—'}</div>
           </div>
         `).join('')}
       </div>
     </div>
     <div class="sp-section">
-      <div class="sp-section-hd">AI recommendation</div>
+      <div class="sp-section-hd">Blade recommendation</div>
       <div class="ai-suggest">
-        <div class="ai-suggest-txt">Hand water 12 min focused on ${lowSpot} spot — no rain in 4 days, elevated ET. Dollar spot risk elevated. Consider extending tonight's baseline irrigation by 5 min on this zone.</div>
+        <div class="ai-suggest-txt">${recommendation}</div>
       </div>
     </div>
     ${readings.length > 1 ? `
@@ -3421,15 +3525,86 @@ function renderIrrHistory(){
   </div>
   
   <div class="card">
-    <div class="card-head"><div class="card-title">Irrigation run log · BETA</div><button class="btn-green">+ Log entry</button></div>
+    <div class="card-head"><div class="card-title">Irrigation run log · BETA</div><button class="btn-green" onclick="openIrrLogModal()">+ Log entry</button></div>
     <div class="card-body" style="padding:0;">
       <table class="hw-log-table">
         <thead><tr><th>Date</th><th>Zone</th><th>Scheduled</th><th>Actual runtime</th><th>Override reason</th><th></th></tr></thead>
-        <tbody>${DATA.irrLog.map(r=>`<tr><td>${r.date}</td><td>${r.zone}</td><td>${r.sched}</td><td>${r.actual}</td><td>${r.reason}</td><td><div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div></td></tr>`).join('')}</tbody>
+        <tbody>${DATA.irrLog.map((r,i)=>`<tr><td>${r.date}</td><td>${r.zone}</td><td>${r.sched}</td><td>${r.actual}</td><td>${r.reason}</td><td><div class="row-actions"><button class="row-icon-btn" onclick="openIrrLogModal(${i})" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteIrrLog(${i})" title="Delete">×</button></div></td></tr>`).join('')}</tbody>
       </table>
     </div>
   </div>
   `;
+}
+function openIrrLogModal(idx){
+  const editing = (idx !== undefined && idx !== null);
+  const r = editing ? DATA.irrLog[idx] : null;
+  if(editing && !r) return;
+  const dateIso = editing ? (r.isoDate || legacyDispToIso(r.date)) : new Date().toISOString().split('T')[0];
+  const esc = v => (v==null?'':String(v)).replace(/"/g,'&quot;');
+  const html = `
+  <div class="modal-overlay open" id="irrlog-modal">
+    <div class="modal-box">
+      <div class="modal-title">${editing?'✏ Edit irrigation run':'+ Log irrigation run'}</div>
+      <input type="hidden" id="il-idx" value="${editing?idx:''}">
+      <div class="modal-row">
+        <div class="modal-field"><label>Date</label><input type="date" id="il-date" value="${dateIso}"></div>
+        <div class="modal-field"><label>Zone</label><input type="text" id="il-zone" value="${editing?esc(r.zone):''}" placeholder="e.g. All greens, Fairways 1-6"></div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field"><label>Scheduled runtime</label><input type="text" id="il-sched" value="${editing?esc(r.sched):''}" placeholder="e.g. 12 min"></div>
+        <div class="modal-field"><label>Actual runtime</label><input type="text" id="il-actual" value="${editing?esc(r.actual):''}" placeholder="e.g. 0 min"></div>
+      </div>
+      <div class="modal-field"><label>Override reason</label><input type="text" id="il-reason" value="${editing?esc(r.reason):''}" placeholder="e.g. Rain forecast — held"></div>
+      <div class="modal-btns">
+        <button class="btn-outline" onclick="closeModal('irrlog-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
+        <button class="btn-green" onclick="saveIrrLog()">${editing?'Save changes':'Log entry'}</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-container').innerHTML = html;
+  setTimeout(()=>{document.getElementById('il-zone').focus();},50);
+}
+function saveIrrLog(){
+  const zone = document.getElementById('il-zone').value.trim();
+  if(!zone) return showToast('Enter zone', true);
+  const idxVal = document.getElementById('il-idx').value;
+  const editing = idxVal !== '';
+  const dateVal = document.getElementById('il-date').value;
+  let date, isoDate;
+  if(dateVal){
+    const [y,mo,d] = dateVal.split('-').map(Number);
+    date = MONTHS_SHORT[mo-1]+' '+d;
+    isoDate = dateVal;
+  } else {
+    const now = new Date();
+    date = MONTHS_SHORT[now.getMonth()]+' '+now.getDate();
+    isoDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  }
+  const entry = {
+    date, isoDate, zone,
+    sched: document.getElementById('il-sched').value,
+    actual: document.getElementById('il-actual').value,
+    reason: document.getElementById('il-reason').value
+  };
+  if(editing){
+    DATA.irrLog[parseInt(idxVal)] = entry;
+    showToast('Irrigation log entry updated');
+  } else {
+    DATA.irrLog.unshift(entry);
+    showToast('Irrigation run logged');
+  }
+  lsSave();
+  closeModal('irrlog-modal');
+  document.getElementById('modal-container').innerHTML = '';
+  renderMain();
+}
+function deleteIrrLog(idx){
+  if(!DATA.irrLog[idx]) return;
+  if(!confirm('Delete this irrigation log entry?')) return;
+  DATA.irrLog.splice(idx, 1);
+  lsSave();
+  renderMain();
+  showToast('Irrigation log entry deleted');
 }
 
 function openHandWaterModal(){
@@ -3447,6 +3622,8 @@ function renderHoleDetail(){
   const _mv = m ? Object.values(m.spots).filter(v=>v!=null) : [];
   const avg = _mv.length ? Math.round(_mv.reduce((a,b)=>a+b,0)/_mv.length) : '—';
   const low = _mv.length ? Math.min(..._mv) : '—';
+  const _adjHD = moistureWeatherAdjustment();
+  const _urgT = 19 + _adjHD.thresholdBump, _dryT = 23 + _adjHD.thresholdBump;
   
   const holeChips = Array.from({length:18},(_,i)=>i+1).map(n=>
     `<button class="hole-btn${n===hole?' active':''}" onclick="setHoleDetail(${n})">${n}</button>`
@@ -3462,7 +3639,7 @@ function renderHoleDetail(){
   
   <div class="ai-brief" onclick="openAIBriefing()">
     <div class="ai-brief-chevron">→</div>
-    <div class="ai-brief-hd"><span>✦</span> Hole ${hole} — AI-GENERATED SUMMARY</div>
+    <div class="ai-brief-hd"><span>✦</span> Hole ${hole} — BLADE SUMMARY</div>
     <div class="ai-brief-txt">${holeBriefText(hole)}</div>
   </div>
   
@@ -3472,7 +3649,7 @@ function renderHoleDetail(){
       <div class="card-body">
         <div class="stat-val">Center-Front</div>
         <div class="stat-lbl">Today · Easy difficulty</div>
-        <div class="stat-ai">✦ AI suggested — high traffic weekend</div>
+        <div class="stat-ai">✦ Blade suggested — high traffic weekend</div>
         <button class="btn-outline" style="margin-top:10px;width:100%;" onclick="navTo('course','pinlocations')">Adjust pin →</button>
       </div>
     </div>
@@ -3509,9 +3686,9 @@ function renderHoleDetail(){
       </div>
       <div class="card-body">
         ${m ? (()=>{
-          const sc = v => v==null?'var(--text-muted)':v<19?'var(--red-600)':v<23?'var(--amber-600)':v<28?'var(--green-700)':'var(--blue-600)';
-          const sb = v => v==null?'var(--bg-field)':v<19?'var(--red-100)':v<23?'var(--amber-100)':v<28?'var(--green-50)':'var(--blue-100)';
-          const sdot = v => v==null?'spot-none':v<19?'spot-dry':v<23?'spot-attn':v<28?'spot-ok':'spot-wet';
+          const sc = v => v==null?'var(--text-muted)':v<_urgT?'var(--red-600)':v<_dryT?'var(--amber-600)':v<_dryT+5?'var(--green-700)':'var(--blue-600)';
+          const sb = v => v==null?'var(--bg-field)':v<_urgT?'var(--red-100)':v<_dryT?'var(--amber-100)':v<_dryT+5?'var(--green-50)':'var(--blue-100)';
+          const sdot = v => v==null?'spot-none':v<_urgT?'spot-dry':v<_dryT?'spot-attn':v<_dryT+5?'spot-ok':'spot-wet';
           return `
           <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:12px;">
             <div class="green-diagram-mini" style="flex-shrink:0;">
@@ -3536,24 +3713,14 @@ function renderHoleDetail(){
               </div>`;
             }).join('')}
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;font-weight:600;padding:7px 9px;background:var(--bg-field);border-radius:7px;margin-bottom:10px;border:1px solid var(--border);">
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--red-600);flex-shrink:0;"></div><span style="color:var(--red-600);">Urgent ≤18%</span></div>
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--amber-600);flex-shrink:0;"></div><span style="color:var(--amber-600);">Attention 19–22%</span></div>
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green-500);flex-shrink:0;"></div><span style="color:var(--green-700);">Good 23–28%</span></div>
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue-600);flex-shrink:0;"></div><span style="color:var(--blue-600);">Wet 28%+</span></div>
-          </div>
+          ${moistureLegendHTML(_urgT, _dryT)}
           <div style="display:flex;gap:6px;">
             <button class="btn-outline" style="flex:1;font-size:11px;" onclick="openMoistureDetail(${hole})">History →</button>
             <button class="btn-outline" style="flex:1;font-size:11px;" onclick="navTo('course','moisture');openMoistureEntry();">Log reading →</button>
           </div>`;
         })() : `
           <div style="text-align:center;padding:20px 10px;color:var(--text-muted);font-size:12px;">No moisture data for this hole yet</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;font-weight:600;padding:7px 9px;background:var(--bg-field);border-radius:7px;margin-bottom:10px;border:1px solid var(--border);">
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--red-600);flex-shrink:0;"></div><span style="color:var(--red-600);">Urgent ≤18%</span></div>
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--amber-600);flex-shrink:0;"></div><span style="color:var(--amber-600);">Attention 19–22%</span></div>
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green-500);flex-shrink:0;"></div><span style="color:var(--green-700);">Good 23–28%</span></div>
-            <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue-600);flex-shrink:0;"></div><span style="color:var(--blue-600);">Wet 28%+</span></div>
-          </div>
+          ${moistureLegendHTML(_urgT, _dryT)}
           <button class="btn-outline" style="width:100%;" onclick="navTo('course','moisture');openMoistureEntry();">Log new reading →</button>`}
       </div>
     </div>
@@ -3769,15 +3936,15 @@ function renderMowHeights(){
   
   ${mowView==='defaults' ? `
     <div class="ai-suggest">
-      <div class="ai-suggest-hd"><span class="spin"></span> ✦ AI MOW HEIGHT RECOMMENDATION</div>
+      <div class="ai-suggest-hd"><span class="spin"></span> ✦ BLADE MOW HEIGHT RECOMMENDATION</div>
       <div class="ai-suggest-txt">Dry forecast + tournament Saturday = lower greens to 0.110" (from 0.125") for speed, keep fairways 0.500". Raise rough to 2.500" for recovery — recent dry stress. No change to tees.</div>
       <button class="btn-outline" style="margin-top:8px;">↺ Regenerate</button>
     </div>
     <div class="card" style="margin-top:12px;">
-      <div class="card-head"><div class="card-title">Mow heights — course defaults</div><div class="ai-chip">✦ AI-adjusted</div></div>
+      <div class="card-head"><div class="card-title">Mow heights — course defaults</div><div class="ai-chip">✦ Blade-adjusted</div></div>
       <div class="card-body" style="padding:0;">
         <table class="mow-table">
-          <thead><tr><th>Zone</th><th>Height</th><th>AI change</th></tr></thead>
+          <thead><tr><th>Zone</th><th>Height</th><th>Blade change</th></tr></thead>
           <tbody>
             <tr><td>Greens</td><td><div class="qa-row"><input id="mh-greens" type="range" min="80" max="200" step="5" value="${DATA.mowHeights?.greens||110}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.greens||110)/1000).toFixed(3)}"</div></div></td><td><span class="proj-badge pb-g">↓ from 0.125"</span></td></tr>
             <tr><td>Fairways</td><td><div class="qa-row"><input id="mh-fairways" type="range" min="300" max="700" step="25" value="${DATA.mowHeights?.fairways||500}" oninput="this.nextElementSibling.textContent=(parseInt(this.value)/1000).toFixed(3)+'\\u0022'"><div class="qa-val">${((DATA.mowHeights?.fairways||500)/1000).toFixed(3)}"</div></div></td><td><span style="font-size:10px;color:var(--text-muted);">No change</span></td></tr>
@@ -3870,10 +4037,17 @@ function pushHeightsToWO(){
 
 /* ═══ COURSE → MOISTURE (5-SPOT) ═══ */
 /* ═══ MOISTURE ANALYSIS ENGINE ═══
-   Reads DATA.moisture and surfaces real, ranked dry-spot patterns.
-   Thresholds match the legend: <19% urgent, <23% attention. */
+   Reads DATA.moisture and surfaces real, ranked dry-spot patterns against
+   base thresholds of 23% (dry) / 19% (urgent) — but those thresholds now move
+   with live weather — heat/wind push them up (flag drying spots sooner,
+   before they get critical), and incoming rain discounts the urgency score
+   (irrigation likely resolves on its own). Everything downstream — badges,
+   stat cards, hand-water alerts, briefings, tonight's irrigation plan —
+   reads from this single function. */
 function analyzeMoisture(){
   const SPOTS = [['front','Front'],['middle','Middle'],['back','Back'],['left','Left'],['right','Right']];
+  const adj = moistureWeatherAdjustment();
+  const dryT = 23 + adj.thresholdBump, urgT = 19 + adj.thresholdBump;
   const findings = [];
   DATA.moisture.forEach(m => {
     const readings = (m.readings || []).filter(r => r && r.spots);
@@ -3883,51 +4057,203 @@ function analyzeMoisture(){
       const vals = recent.map(r => r.spots[key]).filter(v => v != null);
       if(!vals.length) return;
       const latest = vals[0];
-      if(latest >= 23) return; // only flag spots that are dry right now
+      if(latest >= dryT) return; // only flag spots that are dry right now
       const n = vals.length;
       const avg = Math.round(vals.reduce((a,b)=>a+b,0) / n);
-      const dryCount    = vals.filter(v => v < 23).length;
-      const urgentCount = vals.filter(v => v < 19).length;
+      const dryCount    = vals.filter(v => v < dryT).length;
+      const urgentCount = vals.filter(v => v < urgT).length;
       const consistent  = n >= 2 && dryCount === n; // dry on every recent reading
+      // Rain doesn't hide a genuinely critical or chronic spot — only takes the
+      // edge off a borderline one that's likely to be resolved by tonight's rain.
+      const rainSuppressed = adj.rainComing && latest >= urgT - 4 && !consistent;
+      const effectiveUrgent = urgentCount > 0 && !rainSuppressed;
       // Urgency score: how dry now + how many urgent readings + how persistent
-      let score = (23 - latest) * 2 + urgentCount * 6 + (consistent ? n * 3 : dryCount);
-      findings.push({ hole:m.hole, label, latest, avg, n, dryCount, urgentCount, consistent, vals, score });
+      let score = (dryT - latest) * 2 + urgentCount * 6 + (consistent ? n * 3 : dryCount);
+      if(rainSuppressed) score = Math.round(score * 0.4);
+      findings.push({ hole:m.hole, label, latest, avg, n, dryCount, urgentCount, consistent, vals, score,
+        dryThreshold:dryT, urgentThreshold:urgT, effectiveUrgent, rainSuppressed,
+        rainComing:adj.rainComing, rainPct:adj.rainPct, etLabel:adj.etLabel });
     });
   });
   findings.sort((a,b) => b.score - a.score);
   return findings;
 }
+// Groups analyzeMoisture() findings by hole (worst spot wins) — the one list
+// every "does this green need hand watering" UI element should read from.
+function getHandWaterAlerts(){
+  const byHole = new Map();
+  analyzeMoisture().forEach(f => {
+    const existing = byHole.get(f.hole);
+    if(!existing || f.latest < existing.latest) byHole.set(f.hole, f);
+  });
+  return [...byHole.values()].sort((a,b) => a.latest - b.latest);
+}
+// Shared legend for the 5-spot color scale — takes the live (possibly
+// heat/wind-bumped) thresholds so the legend numbers never drift from what
+// the colors actually mean.
+function moistureLegendHTML(urgT, dryT){
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;font-weight:600;padding:7px 9px;background:var(--bg-field);border-radius:7px;margin-bottom:10px;border:1px solid var(--border);">
+    <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--red-600);flex-shrink:0;"></div><span style="color:var(--red-600);">Urgent ≤${urgT-1}%</span></div>
+    <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--amber-600);flex-shrink:0;"></div><span style="color:var(--amber-600);">Attention ${urgT}–${dryT-1}%</span></div>
+    <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green-500);flex-shrink:0;"></div><span style="color:var(--green-700);">Good ${dryT}–${dryT+4}%</span></div>
+    <div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue-600);flex-shrink:0;"></div><span style="color:var(--blue-600);">Wet ${dryT+5}%+</span></div>
+  </div>`;
+}
 function moistureInsightHTML(){
   const findings = analyzeMoisture();
   if(!findings.length){
-    return `<div class="ai-suggest-hd">✦ AI PATTERN DETECTION · MOISTURE</div>
+    return `<div class="ai-suggest-hd">✦ BLADE PATTERN DETECTION · MOISTURE</div>
       <div class="ai-suggest-txt">All greens are reading within a healthy range (≥23%) at their latest scan. No dry-spot patterns detected — maintain current irrigation.</div>`;
   }
   // Only surface the urgent ones: low now or dry on every recent reading. Cap at 3.
-  let urgent = findings.filter(f => f.urgentCount > 0 || f.consistent).slice(0, 3);
+  let urgent = findings.filter(f => f.effectiveUrgent || f.consistent).slice(0, 3);
   if(!urgent.length) urgent = findings.slice(0, 1); // nothing "urgent" — show the single driest as a heads-up
   const items = urgent.map(f => {
-    const sev = f.urgentCount > 0 ? '🔴' : '🟠';
+    const sev = f.effectiveUrgent ? '🔴' : f.rainSuppressed ? '🌧' : '🟠';
     const trend = f.consistent
       ? `consistently dry — ${f.vals.map(v=>v+'%').join(', ')} across the last ${f.n} reading${f.n>1?'s':''} (avg ${f.avg}%)`
       : `currently ${f.latest}%${f.n>1?` (avg ${f.avg}% over last ${f.n})`:''}`;
-    const rec = f.urgentCount > 0
+    const rec = f.rainSuppressed
+      ? `Rain chance ${f.rainPct}% — holding off on hand-watering, likely resolves naturally.`
+      : f.effectiveUrgent
       ? 'Prioritize hand-watering here and check irrigation coverage / wetting-agent need.'
       : 'Monitor and spot-water — trending toward the urgent threshold.';
     return `${sev} <strong>Green ${f.hole} — ${f.label} spot</strong>: ${trend}. ${rec}`;
   });
-  return `<div class="ai-suggest-hd">✦ AI PATTERN DETECTION · MOISTURE</div>
+  return `<div class="ai-suggest-hd">✦ BLADE PATTERN DETECTION · MOISTURE</div>
     <div class="ai-suggest-txt">${items.join('<br><br>')}</div>`;
+}
+/* Turns the raw Open-Meteo response into decision-ready signals — dew point
+   risk, rain timing/probability, overnight rain chance during the irrigation
+   window — shared by the briefings and the irrigation zone recs below. */
+function weatherSignals(){
+  const d = weatherData;
+  if(!d || !d.current || !d.daily || !d.daily.time) return null;
+  const cur = d.current, daily = d.daily, hourly = d.hourly;
+  const now = new Date();
+  const today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  let ti = daily.time.indexOf(today);
+  if(ti < 0) ti = 0;
+  const temp = Math.round(cur.temperature_2m);
+  const dew = Math.round(cur.dew_point_2m);
+  const wind = Math.round(cur.wind_speed_10m);
+  const popToday = daily.precipitation_probability_max ? daily.precipitation_probability_max[ti] : null;
+  const popTom = daily.precipitation_probability_max ? daily.precipitation_probability_max[ti+1] : null;
+  // Worst rain chance during tonight's irrigation window (9pm–4am, next ~30h out).
+  let overnightPop = null;
+  if(hourly && hourly.time && hourly.precipitation_probability){
+    hourly.time.forEach((t,i)=>{
+      const dt = new Date(t);
+      if(dt < now || (dt-now)/3600000 > 30) return;
+      const hr = dt.getHours();
+      if(hr>=21 || hr<=4){
+        const p = hourly.precipitation_probability[i];
+        if(overnightPop===null || p>overnightPop) overnightPop = p;
+      }
+    });
+  }
+  const dewRisk = dew>=60?'High':dew>=55?'Elevated':'Low';
+  return {temp, dew, wind, popToday, popTom, overnightPop, dewRisk};
+}
+// Turns live weather into the two moisture-engine adjustments: heat/wind raise
+// evapotranspiration, so dry/urgent thresholds shift up (flag spots sooner);
+// meaningful incoming rain discounts urgency (irrigation likely self-resolves).
+function moistureWeatherAdjustment(){
+  const w = weatherSignals();
+  if(!w) return {thresholdBump:0, rainComing:false, rainPct:0, etLabel:null};
+  let bump = 0;
+  const stress = [];
+  if(w.temp >= 85){ bump += 2; stress.push(`${w.temp}°F`); }
+  else if(w.temp >= 78){ bump += 1; stress.push(`${w.temp}°F`); }
+  if(w.wind >= 15){ bump += 1; stress.push(`${w.wind}mph wind`); }
+  bump = Math.min(bump, 3);
+  const rainPct = Math.max(w.overnightPop||0, w.popToday||0, w.popTom||0);
+  const rainComing = rainPct >= 40;
+  return { thresholdBump: bump, rainComing, rainPct, etLabel: stress.length ? stress.join(', ') : null };
+}
+
+/* ═══ GROWING DEGREE DAYS ═══
+   Derives GDD accumulation from the daily high/low history already being
+   fetched (fetchWeather() pulls 92 days back). Two uses:
+   - GDD32 (base 32°F) since the last logged PGR application — the standard
+     unit PGR labels (e.g. Primo Maxx) express reapplication intervals in.
+   - GDD50 (base 50°F), a rolling accumulation over the available history —
+     a general turf growth/stress reference, not tied to one disease model. */
+// A spray log entry's date, as ISO. New entries store isoDate directly;
+// legacy "MMM D" entries (year was historically discarded on save) fall back
+// to assuming the current year, same as the date-picker's edit prefill.
+function sprayEntryIso(s){
+  return s.isoDate || legacyDispToIso(s.date);
+}
+function getLastPGRSpray(){
+  const pgrRe = /primo|trinexapac|proxy|cutless|paclobutrazol|growth regulator/i;
+  const hits = DATA.sprayLog
+    .filter(s => pgrRe.test(s.product||'') || pgrRe.test(s.notes||''))
+    .map(s => ({...s, iso: sprayEntryIso(s)}))
+    .filter(s => s.iso);
+  if(!hits.length) return null;
+  hits.sort((a,b) => b.iso.localeCompare(a.iso));
+  return hits[0];
+}
+// Sums max(0, (Tmax+Tmin)/2 - base) for each day in [sinceIso, throughIso].
+function computeGDD(baseTemp, sinceIso, throughIso){
+  const daily = weatherData && weatherData.daily;
+  if(!daily || !daily.time) return null;
+  let sum = 0, days = 0;
+  daily.time.forEach((t,i) => {
+    if(t < sinceIso || t > throughIso) return;
+    const hi = daily.temperature_2m_max[i], lo = daily.temperature_2m_min[i];
+    if(hi==null || lo==null) return;
+    sum += Math.max(0, (hi+lo)/2 - baseTemp);
+    days++;
+  });
+  return { gdd: Math.round(sum), days };
+}
+function gddStatus(){
+  const daily = weatherData && weatherData.daily;
+  if(!daily || !daily.time || !daily.time.length) return null;
+  const now = new Date();
+  const today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const lastDay = daily.time[daily.time.length-1]; // includes the forward forecast window
+  const earliest = daily.time[0];
+  const PGR_TARGET = 200; // standard GDD32 reapplication target for Primo Maxx-class PGRs; adjust per label/region
+  let pgr = null;
+  const lastPGR = getLastPGRSpray();
+  if(lastPGR){
+    const soFar = computeGDD(32, lastPGR.iso, today);
+    if(soFar){
+      const projected = computeGDD(32, lastPGR.iso, lastDay);
+      const dailyRate = soFar.days ? soFar.gdd / soFar.days : 0;
+      const remaining = PGR_TARGET - soFar.gdd;
+      const daysToTarget = remaining <= 0 ? 0 : (dailyRate > 0 ? Math.ceil(remaining/dailyRate) : null);
+      const dueDate = daysToTarget!=null ? new Date(now.getTime()+daysToTarget*86400000) : null;
+      pgr = {
+        product: lastPGR.product, appliedIso: lastPGR.iso, appliedDisp: lastPGR.date,
+        gdd: soFar.gdd, target: PGR_TARGET, pct: Math.min(100, Math.round(soFar.gdd/PGR_TARGET*100)),
+        due: soFar.gdd >= PGR_TARGET, projectedGdd: projected ? projected.gdd : null, dueDate,
+        // Weather history only reaches back so far — flag if the application predates it so the count isn't mistaken for complete.
+        truncated: lastPGR.iso < earliest
+      };
+    }
+  }
+  const gdd50raw = computeGDD(50, earliest, today);
+  const gdd50 = gdd50raw ? { ...gdd50raw, sinceIso: earliest } : null;
+  return { pgr, gdd50 };
 }
 /* Shared, data-driven text builders used by the other AI panels. */
 function irrBriefText(){
   const f = analyzeMoisture();
-  const urgentHoles = [...new Set(f.filter(x => x.urgentCount > 0 || x.consistent).map(x => x.hole))];
+  const urgentHoles = [...new Set(f.filter(x => x.effectiveUrgent || x.consistent).map(x => x.hole))];
   const top = f[0];
   const parts = [];
   parts.push(urgentHoles.length
     ? `${urgentHoles.length} green${urgentHoles.length>1?'s':''} flagged for hand-watering${top?` — priority Green ${top.hole} (${top.label} spot ${top.latest}%)`:''}.`
     : 'No greens need hand-watering — all latest spot readings are healthy (≥23%).');
+  const w = weatherSignals();
+  if(w){
+    if(w.overnightPop!=null && w.overnightPop>=25) parts.push(`Rain chance ${w.overnightPop}% overnight — tonight's plan below adjusts affected zones.`);
+    if(w.dewRisk!=='Low') parts.push(`Dew point ${w.dew}°F — ${w.dewRisk.toLowerCase()} dollar spot risk, trimming greens irrigation to shorten leaf wetness.`);
+  }
   DATA.scoutLog.filter(s => s.category==='irrigation' && s.status!=='Resolved')
     .forEach(s => parts.push(`${s.issue} on ${s.hole} (from Scouting) → zone affected, add to today's priority.`));
   const ns = DATA.upcomingSprays && DATA.upcomingSprays[0];
@@ -3936,12 +4262,18 @@ function irrBriefText(){
 }
 function morningBriefText(){
   const f = analyzeMoisture();
-  const urgentHoles = [...new Set(f.filter(x => x.urgentCount > 0 || x.consistent).map(x => x.hole))];
+  const urgentHoles = [...new Set(f.filter(x => x.effectiveUrgent || x.consistent).map(x => x.hole))];
   const top = f[0];
   const parts = [];
   parts.push(urgentHoles.length
     ? `${urgentHoles.length} green${urgentHoles.length>1?'s':''} flagged for hand-watering${top?` — priority Green ${top.hole} (${top.label} spot ${top.latest}%)`:''}.`
     : 'No greens flagged for hand-watering — moisture is healthy across the board.');
+  const w = weatherSignals();
+  if(w){
+    if(w.overnightPop!=null && w.overnightPop>=25) parts.push(`Rain chance ${w.overnightPop}% overnight.`);
+    else if(w.popTom!=null && w.popTom>=40) parts.push(`Rain forecast ${w.popTom}% tomorrow.`);
+    if(w.dewRisk!=='Low') parts.push(`Dollar spot risk ${w.dewRisk.toLowerCase()} — dew point ${w.dew}°F.`);
+  }
   const disease = DATA.scoutLog.filter(s => s.status!=='Resolved' && s.category==='disease');
   if(disease.length) parts.push(`Disease watch: ${disease.map(s=>`${s.issue} on ${s.hole} (${s.sev})`).join(', ')}.`);
   const ns = DATA.upcomingSprays && DATA.upcomingSprays[0];
@@ -3949,6 +4281,54 @@ function morningBriefText(){
   const gs = DATA.greenSpeeds && DATA.greenSpeeds[0];
   if(gs) parts.push(`Latest green speed ${gs.val} stimp (${gs.date}).`);
   return parts.join(' ');
+}
+// Builds tonight's irrigation zone adjustments from real signals: weather
+// (rain chance + dew point), moisture readings, open irrigation projects, and
+// upcoming tournaments — replaces what used to be 4 hardcoded example rows.
+function computeTonightsPlan(){
+  const rows = [];
+  const w = weatherSignals();
+  if(w){
+    if(w.overnightPop!=null && w.overnightPop>=50){
+      rows.push({urg:'HOLD', sev:'overdue', name:'Fairways & greens', note:`Rain chance ${w.overnightPop}% overnight`, base:'Baseline cycle', adj:'0 min (held)'});
+    } else if(w.overnightPop!=null && w.overnightPop>=25){
+      rows.push({urg:'-REDUCE', sev:'soon', name:'Fairways & greens', note:`Rain chance ${w.overnightPop}% overnight — trimming baseline`, base:'Baseline cycle', adj:'~40% of baseline'});
+    }
+    if(w.dewRisk!=='Low'){
+      rows.push({urg:'-REDUCE', sev:'soon', name:'All greens', note:`Dew point ${w.dew}°F — ${w.dewRisk.toLowerCase()} dollar spot risk, shortening leaf wetness`, base:'12 min', adj:'8 min'});
+    }
+  }
+  const dryFindings = analyzeMoisture().filter(f => f.consistent).slice(0,2);
+  dryFindings.forEach(f=>{
+    rows.push({urg:'+EXTEND', sev:'soon', name:`Green ${f.hole}`, note:`Dry trend — ${f.label.toLowerCase()} spot averaging ${f.avg}%`, base:'12 min', adj:'17 min'});
+  });
+  const brokenIrr = DATA.projects.find(p => p.category==='irrigation' && !p.completed && /broken|offline/i.test(p.desc||p.title||''));
+  if(brokenIrr){
+    const holeMatch = brokenIrr.title.match(/hole\s*(\d+)/i);
+    rows.push({urg:'SKIP', sev:'overdue', name: holeMatch?`Fairway ${holeMatch[1]}`:brokenIrr.title, note:`${brokenIrr.title} (from Projects)`, base:'18 min', adj:'offline'});
+  }
+  const now = new Date();
+  const soonTournament = DATA.calEvents.find(e => e.cat==='tournament' && (new Date(e.date)-now)>=0 && (new Date(e.date)-now) < 5*24*3600*1000);
+  if(soonTournament){
+    rows.push({urg:'-REDUCE', sev:'soon', name:'All greens', note:`${soonTournament.title} — firmer for play`, base:'12 min', adj:'10 min'});
+  }
+  return rows;
+}
+function renderTonightsPlanRows(){
+  const rows = computeTonightsPlan();
+  const summary = rows.length
+    ? `Showing ${rows.length} zone${rows.length!==1?'s':''} with adjustments. Other zones running baseline.`
+    : (weatherData && weatherData.current ? 'No adjustments tonight — all zones running baseline schedule.' : 'Loading weather — zone recs will adjust once the forecast arrives.');
+  const rowsHtml = rows.map(r => `
+        <div class="svc-row" style="grid-template-columns:90px 1fr 1fr auto;">
+          <div><span class="svc-urg ${r.sev}" style="background:var(--${r.sev==='overdue'?'red':'amber'}-100);color:var(--${r.sev==='overdue'?'red':'amber'}-600);border-color:var(--${r.sev==='overdue'?'red':'amber'}-600);">${r.urg}</span></div>
+          <div><div class="svc-machine">${r.name}</div><div class="svc-type">${r.note}</div></div>
+          <div class="svc-hours">Baseline: ${r.base} · Adj: <strong>${r.adj}</strong></div>
+          <button class="btn-outline">Edit</button>
+        </div>`).join('');
+  return `
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">${summary}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">${rowsHtml}</div>`;
 }
 function holeBriefText(hole){
   const entry = DATA.moisture.find(m => m.hole === hole);
@@ -3971,7 +4351,7 @@ function holeBriefText(hole){
 function aiAnswer(q){
   const ql = q.toLowerCase();
   const f = analyzeMoisture();
-  const urgent = f.filter(x => x.urgentCount > 0 || x.consistent);
+  const urgent = f.filter(x => x.effectiveUrgent || x.consistent);
   const fmt = x => `Green ${x.hole} ${x.label.toLowerCase()} spot (${x.latest}%${x.consistent?`, dry ${x.n} readings running`:''})`;
   // Specific green / hole
   const hm = ql.match(/(?:green|hole)\s*(\d{1,2})/);
@@ -4088,8 +4468,10 @@ function renderMoisture(){
   });
   const allDates = Array.from(dateSet).sort((a,b)=>b.localeCompare(a));
 
-  const spotBg  = v => v==null?'#fff':v<19?'var(--red-100)':v<23?'var(--amber-100)':v<28?'var(--green-50)':'var(--blue-100)';
-  const spotCol = v => v==null?'var(--text-muted)':v<19?'var(--red-600)':v<23?'var(--amber-600)':v<28?'var(--green-700)':'var(--blue-600)';
+  const _adjM = moistureWeatherAdjustment();
+  const _urgTM = 19 + _adjM.thresholdBump, _dryTM = 23 + _adjM.thresholdBump;
+  const spotBg  = v => v==null?'#fff':v<_urgTM?'var(--red-100)':v<_dryTM?'var(--amber-100)':v<_dryTM+5?'var(--green-50)':'var(--blue-100)';
+  const spotCol = v => v==null?'var(--text-muted)':v<_urgTM?'var(--red-600)':v<_dryTM?'var(--amber-600)':v<_dryTM+5?'var(--green-700)':'var(--blue-600)';
 
   const rows = DATA.moisture.map(m=>{
     const hole = m.hole;
@@ -4702,7 +5084,7 @@ function renderGreenSpeeds(){
   <div class="card">
     <div class="card-head"><div class="card-title">Recent readings</div><button class="btn-outline">Export CSV</button></div>
     <div class="card-body">
-      ${DATA.greenSpeeds.map(s=>{
+      ${DATA.greenSpeeds.map((s,i)=>{
         const pct = ((s.val-7)/(13-7))*100;
         return `
           <div class="gs-log-row">
@@ -4711,7 +5093,7 @@ function renderGreenSpeeds(){
             <div class="gs-log-hole">${s.holes}</div>
             <div class="gs-log-bar-bg"><div class="gs-log-bar-fill" style="width:${pct}%;"></div></div>
             <div class="gs-log-note">${s.note}</div>
-            <div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div>
+            <div class="row-actions"><button class="row-icon-btn" onclick="openSpeedEntry(${i})" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteSpeed(${i})" title="Delete">×</button></div>
           </div>
         `;
       }).join('')}
@@ -4765,19 +5147,25 @@ function renderSpeedChart(){
   const empty = document.getElementById('gs-chart-empty');
   if(!canvas) return;
 
-  // Filter readings by timeframe - parse dates like "May 27", "Apr 14" etc
+  // Filter readings by real elapsed time using isoDate (falls back to the
+  // legacy current-year assumption for entries logged before isoDate was
+  // tracked) — previously this used entry count as a proxy for day count,
+  // which was wrong for any course not logging exactly one reading/day.
   const now = new Date();
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - gsChartTimeframe);
 
-  // Since dates are stored as "Apr 14" strings, use index as proxy
   // Readings are newest-first, so reverse for chronological display
   const readings = [...DATA.greenSpeeds].reverse();
 
   // For YTD / longer ranges show all if not enough dated data
   const filtered = gsChartTimeframe >= 365
     ? readings
-    : readings.slice(-Math.min(readings.length, Math.ceil(gsChartTimeframe / 1)));
+    : readings.filter(s => {
+        const iso = s.isoDate || legacyDispToIso(s.date);
+        if(!iso) return true; // unparseable — keep it visible rather than silently dropping real data
+        return new Date(iso+'T00:00:00') >= cutoff;
+      });
 
   if(filtered.length < 2){
     canvas.style.display = 'none';
@@ -4876,11 +5264,20 @@ function renderSpeedChart(){
   }
 }
 
-function openSpeedEntry(){
+function openSpeedEntry(idx){
+  const editing = (idx !== undefined && idx !== null);
+  const s = editing ? DATA.greenSpeeds[idx] : null;
+  if(editing && !s) return;
+  const dateIso = editing ? (s.isoDate || legacyDispToIso(s.date)) : new Date().toISOString().split('T')[0];
+  // Pre-select the hole chips from the stored "holes" display string ("All 18" or "3,7,12").
+  const preselected = editing && s.holes !== 'All 18' ? s.holes.split(',').map(h=>parseInt(h.trim())).filter(n=>n>=1&&n<=18) : [];
+  const preAll = editing && s.holes === 'All 18';
+  const esc = v => (v==null?'':String(v)).replace(/"/g,'&quot;');
   const html = `
   <div class="modal-overlay open" id="speed-modal">
     <div class="modal-box">
-      <div class="modal-title">+ Log green speed</div>
+      <div class="modal-title">${editing?'✏ Edit green speed reading':'+ Log green speed'}</div>
+      <input type="hidden" id="sm-idx" value="${editing?idx:''}">
       <div class="modal-row">
         <div class="modal-field">
           <label>Hole # (optional)</label>
@@ -4893,12 +5290,12 @@ function openSpeedEntry(){
             }
           " onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('sm-val').focus();}">
         </div>
-        <div class="modal-field"><label>Stimpmeter reading</label><input type="number" id="sm-val" step="0.1" placeholder="e.g. 10.2"></div>
-        <div class="modal-field"><label>Date</label><input type="date" id="sm-date" value="${new Date().toISOString().split('T')[0]}"></div>
+        <div class="modal-field"><label>Stimpmeter reading</label><input type="number" id="sm-val" step="0.1" value="${editing?s.val:''}" placeholder="e.g. 10.2"></div>
+        <div class="modal-field"><label>Date</label><input type="date" id="sm-date" value="${dateIso}"></div>
       </div>
       <div class="modal-field"><label>Multi-select holes (optional)</label>
         <div class="scout-multi-hole-row" style="margin-top:6px;">
-          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn" onclick="this.classList.toggle('selected');document.getElementById('sm-hole').value='';">${i+1}</button>`).join('')}
+          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn${preAll||preselected.includes(i+1)?' selected':''}" onclick="this.classList.toggle('selected');document.getElementById('sm-hole').value='';">${i+1}</button>`).join('')}
         </div>
         <div style="margin-top:6px;display:flex;gap:4px;">
           <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.add('selected'));document.getElementById('sm-hole').value='';">All 18</button>
@@ -4907,10 +5304,10 @@ function openSpeedEntry(){
           <button class="hole-qs-btn" onclick="document.querySelectorAll('#speed-modal .tiny-hole-btn').forEach(b=>b.classList.remove('selected'));document.getElementById('sm-hole').value='';">Clear</button>
         </div>
       </div>
-      <div class="modal-field"><label>Notes (optional)</label><input type="text" id="sm-notes" placeholder="Conditions, event context..."></div>
+      <div class="modal-field"><label>Notes (optional)</label><input type="text" id="sm-notes" value="${editing?esc(s.note):''}" placeholder="Conditions, event context..."></div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('speed-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="saveSpeed()">Save reading</button>
+        <button class="btn-green" onclick="saveSpeed()">${editing?'Save changes':'Save reading'}</button>
       </div>
     </div>
   </div>`;
@@ -4922,12 +5319,44 @@ function saveSpeed(){
   if(!val) return showToast('Enter reading', true);
   const selected = Array.from(document.querySelectorAll('#speed-modal .tiny-hole-btn.selected')).map(b=>b.textContent);
   const holes = selected.length === 0 ? 'All 18' : selected.length === 18 ? 'All 18' : selected.join(',');
-  DATA.greenSpeeds.unshift({date:MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(), val, holes, note: document.getElementById('sm-notes').value});
+  // The date picker's value was previously read into the UI but silently
+  // discarded here — every reading got stamped with today's date regardless
+  // of what was picked. Now used, and stored as isoDate too (not just the
+  // year-less "MMM D" display string) so the timeframe chart can filter by
+  // real elapsed time instead of an entry-count proxy.
+  const dateVal = document.getElementById('sm-date').value;
+  let date, isoDate;
+  if(dateVal){
+    const [y,mo,d] = dateVal.split('-').map(Number);
+    date = MONTHS_SHORT[mo-1]+' '+d;
+    isoDate = dateVal;
+  } else {
+    const now = new Date();
+    date = MONTHS_SHORT[now.getMonth()]+' '+now.getDate();
+    isoDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  }
+  const idxVal = document.getElementById('sm-idx').value;
+  const editing = idxVal !== '';
+  const entry = {date, isoDate, val, holes, note: document.getElementById('sm-notes').value};
+  if(editing){
+    DATA.greenSpeeds[parseInt(idxVal)] = entry;
+    showToast('Reading updated');
+  } else {
+    DATA.greenSpeeds.unshift(entry);
+    showToast('Reading saved');
+  }
   lsSave();
-  showToast('Reading saved');
   closeModal('speed-modal');
   document.getElementById('modal-container').innerHTML = '';
   renderMain();
+}
+function deleteSpeed(idx){
+  if(!DATA.greenSpeeds[idx]) return;
+  if(!confirm('Delete this green speed reading?')) return;
+  DATA.greenSpeeds.splice(idx, 1);
+  lsSave();
+  renderMain();
+  showToast('Reading deleted');
 }
 
 /* ═══ COURSE → SCOUTING LOG ═══ */
@@ -4990,7 +5419,7 @@ function renderScouting(){
                 <td><span class="proj-badge ${sevCls}">${s.sev}</span></td>
                 <td><span class="${stCls}">${s.status}</span></td>
                 <td>${s.action}</td>
-                <td><div class="row-actions" onclick="event.stopPropagation();"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div></td>
+                <td><div class="row-actions" onclick="event.stopPropagation();"><button class="row-icon-btn" onclick="openScoutModal(${i})" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteScout(${i})" title="Delete">×</button></div></td>
               </tr>
             `;
           }).join('')}
@@ -5036,32 +5465,38 @@ function openScoutDetail(idx){
   `);
 }
 
-function openScoutModal(){
+function openScoutModal(idx){
+  const editing = (idx !== undefined && idx !== null);
+  const s = editing ? DATA.scoutLog[idx] : null;
+  if(editing && !s) return;
+  const preselected = editing && s.holes ? s.holes : [];
+  const opt = (val, cur) => `<option${val===cur?' selected':''}>${val}</option>`;
   const html = `
   <div class="modal-overlay open" id="scout-modal">
     <div class="modal-box wide">
-      <div class="modal-title">+ Log scouting issue</div>
+      <div class="modal-title">${editing?'✏ Edit scouting issue':'+ Log scouting issue'}</div>
+      <input type="hidden" id="sc-idx" value="${editing?idx:''}">
       <div class="modal-field"><label>Holes affected (multi-select)</label>
         <div class="scout-multi-hole-row" style="margin-top:6px;">
-          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn" onclick="this.classList.toggle('selected')">${i+1}</button>`).join('')}
+          ${Array.from({length:18},(_,i)=>`<button class="tiny-hole-btn${preselected.includes(i+1)?' selected':''}" onclick="this.classList.toggle('selected')">${i+1}</button>`).join('')}
         </div>
       </div>
       <div class="modal-row">
-        <div class="modal-field"><label>Category</label><select id="sc-cat"><option>disease</option><option>insect</option><option>weed</option><option>damage</option><option>irrigation</option><option>traffic</option><option>other</option></select></div>
-        <div class="modal-field"><label>Severity</label><select id="sc-sev"><option>Low</option><option selected>Moderate</option><option>High</option><option>Urgent</option></select></div>
+        <div class="modal-field"><label>Category</label><select id="sc-cat">${['disease','insect','weed','damage','irrigation','traffic','other'].map(c=>opt(c,editing?s.category:'disease')).join('')}</select></div>
+        <div class="modal-field"><label>Severity</label><select id="sc-sev">${['Low','Moderate','High','Urgent'].map(v=>opt(v,editing?s.sev:'Moderate')).join('')}</select></div>
       </div>
-      <div class="modal-field"><label>Issue description</label><input type="text" id="sc-issue" placeholder="e.g. Dollar spot on front-right"></div>
+      <div class="modal-field"><label>Issue description</label><input type="text" id="sc-issue" value="${editing?(s.issue||'').replace(/"/g,'&quot;'):''}" placeholder="e.g. Dollar spot on front-right"></div>
       <div class="modal-row">
         <div class="modal-field"><label>Area within hole (5-spot)</label><select id="sc-area"><option>Entire green</option><option>Front</option><option>Middle</option><option>Back</option><option>Left</option><option>Right</option></select></div>
-        <div class="modal-field"><label>Suggested action</label><select id="sc-action"><option>Monitor</option><option>Hand water</option><option>Spray</option><option>Create WO</option><option>Other</option></select></div>
+        <div class="modal-field"><label>Suggested action</label><select id="sc-action">${['Monitor','Hand water','Spray','Create WO','Other'].map(v=>opt(v,editing?s.action:'Monitor')).join('')}</select></div>
       </div>
-      <div class="modal-field"><label>Notes</label><textarea id="sc-notes" style="height:60px;" placeholder="Context, conditions, observations..."></textarea></div>
+      <div class="modal-field"><label>Notes</label><textarea id="sc-notes" style="height:60px;" placeholder="Context, conditions, observations...">${editing?(s.notes||''):''}</textarea></div>
       <div class="modal-field"><label>Photo</label>
         <div style="background:var(--bg-field);border:1px dashed var(--border-medium);border-radius:8px;padding:20px;text-align:center;font-size:11px;color:var(--text-muted);">📷 Photo upload available after database migration</div>
       </div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('scout-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="saveScout()">Save issue</button>
+        <button class="btn-green" onclick="saveScout()">${editing?'Save changes':'Save issue'}</button>
       </div>
     </div>
   </div>`;
@@ -5071,31 +5506,76 @@ function openScoutModal(){
 function saveScout(){
   const issue = document.getElementById('sc-issue').value.trim();
   if(!issue) return showToast('Enter issue', true);
+  const idxVal = document.getElementById('sc-idx').value;
+  const editing = idxVal !== '';
   const selected = Array.from(document.querySelectorAll('#scout-modal .tiny-hole-btn.selected')).map(b=>parseInt(b.textContent));
-  DATA.scoutLog.unshift({
-    date: MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(),
+  const entry = {
+    date: editing ? DATA.scoutLog[parseInt(idxVal)].date : MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate(),
     hole: selected.length === 1 ? 'Green '+selected[0] : selected.length+' holes',
     holes: selected,
     category: document.getElementById('sc-cat').value,
     issue,
     sev: document.getElementById('sc-sev').value,
     action: document.getElementById('sc-action').value,
-    status: 'Open',
+    status: editing ? DATA.scoutLog[parseInt(idxVal)].status : 'Open',
     notes: document.getElementById('sc-notes').value
-  });
-  showToast('Issue logged');
+  };
+  if(editing){
+    DATA.scoutLog[parseInt(idxVal)] = entry;
+    showToast('Issue updated');
+  } else {
+    DATA.scoutLog.unshift(entry);
+    showToast('Issue logged');
+  }
   closeModal('scout-modal');
   document.getElementById('modal-container').innerHTML = '';
   renderMain();
 }
+function deleteScout(idx){
+  if(!DATA.scoutLog[idx]) return;
+  if(!confirm('Delete this scouting log entry?')) return;
+  DATA.scoutLog.splice(idx, 1);
+  lsSave();
+  renderMain();
+  showToast('Scouting entry deleted');
+}
 
 
 /* ═══ EQUIPMENT → FLEET ═══ */
+// Single source of truth for "is this machine due for service" — computed
+// live from e.hours vs each service interval's lastAt+interval, the same
+// math renderSvcSchedule() already used. Replaces the old e.alertType/e.alert/
+// e.nextService fields, which were seeded once and never recalculated after
+// hours changed (via saveHours() or job completion), so the Fleet badge/dot,
+// sidebar count, and detail panel could silently disagree with the real
+// Service Schedule page.
+function equipmentServiceStatus(e){
+  if(!e.services || !e.services.length){
+    return { type:'green', label:'Running normally', nextService: e.nextService || 'No service intervals set' };
+  }
+  let worst = null;
+  e.services.forEach(s=>{
+    const hoursUntil = (s.lastAt + s.interval) - e.hours;
+    if(!worst || hoursUntil < worst.hoursUntil) worst = { name:s.name, hoursUntil };
+  });
+  const overdue = worst.hoursUntil < 0;
+  const soon = worst.hoursUntil < 10;
+  const type = overdue ? 'red' : soon ? 'amber' : 'green';
+  const label = overdue
+    ? `${worst.name} overdue by ${Math.abs(Math.round(worst.hoursUntil))} hrs`
+    : soon
+      ? `${worst.name} due in ${Math.round(worst.hoursUntil)} hrs`
+      : 'Running normally';
+  const nextService = overdue
+    ? `${worst.name} — ${Math.abs(Math.round(worst.hoursUntil))} hrs overdue`
+    : `${worst.name} in ${Math.round(worst.hoursUntil)}hrs`;
+  return { type, label, nextService };
+}
 let fleetView = 'grid';
 function renderFleet(){
   const active = DATA.equipment.filter(e=>e.status==='active').length;
   const out = DATA.equipment.length - active;
-  const dueWeek = DATA.equipment.filter(e => e.alertType === 'amber').length;
+  const dueWeek = DATA.equipment.filter(e => equipmentServiceStatus(e).type === 'amber').length;
   const woOpen = DATA.workOrders.filter(w => w.status !== 'complete').length;
   
   return `
@@ -5120,15 +5600,16 @@ function renderFleet(){
   ${fleetView === 'grid' ? `
     <div class="equip-grid">
       ${DATA.equipment.map(e=>{
-        const alertCls = e.alertType==='red'?'ov-alert-red':e.alertType==='amber'?'ov-alert-amber':'ov-alert-green';
+        const st = equipmentServiceStatus(e);
+        const alertCls = st.type==='red'?'ov-alert-red':st.type==='amber'?'ov-alert-amber':'ov-alert-green';
         return `
           <div class="eq-card" onclick="openEquipmentDetail('${e.id}')">
-            <div class="eq-status" style="background:${e.alertType==='red'?'var(--red-600)':e.alertType==='amber'?'var(--amber-600)':'var(--green-500)'};"></div>
+            <div class="eq-status" style="background:${st.type==='red'?'var(--red-600)':st.type==='amber'?'var(--amber-600)':'var(--green-500)'};"></div>
             <div class="eq-name">${e.nickname}</div>
             <div class="eq-model">${e.brand} · ${e.model}</div>
             <div class="eq-hours">${e.hours} hrs</div>
-            <span class="eq-alert ${alertCls}">${e.alert}</span>
-            <div class="eq-meta-line">Next: ${e.nextService}</div>
+            <span class="eq-alert ${alertCls}">${st.label}</span>
+            <div class="eq-meta-line">Next: ${st.nextService}</div>
             <div class="eq-meta-line">Last used: ${e.lastUsed}</div>
           </div>
         `;
@@ -5140,16 +5621,16 @@ function renderFleet(){
         <table class="fleet-table">
           <thead><tr><th>Machine</th><th>Model</th><th>Hours</th><th>Next service</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            ${DATA.equipment.map(e=>`
+            ${DATA.equipment.map(e=>{ const st=equipmentServiceStatus(e); return `
               <tr onclick="openEquipmentDetail('${e.id}')" style="cursor:pointer;">
                 <td><strong>${e.nickname}</strong></td>
                 <td>${e.brand} ${e.model}</td>
                 <td>${e.hours} hrs</td>
-                <td>${e.nextService}</td>
-                <td><span class="${e.alertType==='red'?'st-pending':e.alertType==='amber'?'st-pending':'st-done'}">${e.alert}</span></td>
-                <td><div class="row-actions" onclick="event.stopPropagation();"><button class="row-icon-btn">✏</button></div></td>
+                <td>${st.nextService}</td>
+                <td><span class="${st.type==='red'?'st-pending':st.type==='amber'?'st-pending':'st-done'}">${st.label}</span></td>
+                <td><div class="row-actions" onclick="event.stopPropagation();"><button class="row-icon-btn" onclick="event.stopPropagation();openEquipmentDetail('${e.id}')" title="View / edit">✏</button></div></td>
               </tr>
-            `).join('')}
+            `; }).join('')}
           </tbody>
         </table>
       </div>
@@ -5162,6 +5643,7 @@ function setFleetView(v){ fleetView = v; renderMain(); }
 function openEquipmentDetail(id){
   const e = DATA.equipment.find(eq => eq.id === id);
   if(!e) return;
+  const st = equipmentServiceStatus(e);
   const woForThis = DATA.workOrders.filter(w => w.machine === e.nickname && w.status !== 'complete');
   openSidePanel(e.nickname, `
     <div style="background:var(--bg-field);border-radius:9px;padding:30px;text-align:center;color:var(--text-muted);font-size:11px;margin-bottom:14px;">📷 Photo upload available after database migration</div>
@@ -5183,7 +5665,7 @@ function openEquipmentDetail(id){
     </div>
     <div class="sp-section">
       <div class="sp-section-hd">Next service</div>
-      <div style="padding:10px 12px;background:var(--bg-field);border-radius:8px;font-size:12px;">${e.nextService}</div>
+      <div style="padding:10px 12px;background:var(--bg-field);border-radius:8px;font-size:12px;">${st.nextService}</div>
     </div>
     ${woForThis.length > 0 ? `
       <div class="sp-section">
@@ -5444,7 +5926,7 @@ function openEquipmentModal(){
         <div class="modal-field"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" checked> Auto-update hours from Job Board</label><div style="font-size:10px;color:var(--text-muted);margin-top:4px;">When a job is marked complete with this machine assigned, hours auto-increment by actual time logged.</div></div>
       </div>
       <div class="modal-tab-content" id="eq-svc">
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">Add all service intervals for this machine. AI will auto-schedule based on current hours.</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">Add all service intervals for this machine. Blade will auto-schedule based on current hours.</div>
         <div id="svc-intervals">
           <div class="modal-row" style="align-items:end;">
             <div class="modal-field" style="margin:0;"><label>Service name</label><input type="text" placeholder="Oil change"></div>
@@ -5540,7 +6022,7 @@ function renderSvcSchedule(){
   
   return `
   <div class="ai-suggest">
-    <div class="ai-suggest-hd">✦ AI CROSS-REFERENCE</div>
+    <div class="ai-suggest-hd">✦ BLADE CROSS-REFERENCE</div>
     <div class="ai-suggest-txt">Tournament Saturday → Triplex Mower #2 must be serviced by Friday. Current 38.2 hrs, reel service due at 40 hrs. Schedule today during crew transition window (9-11am).</div>
   </div>
   
@@ -6073,13 +6555,13 @@ function renderMechanicPortal(){
         <div class="card-head"><div class="card-title">Fleet at a glance</div><button class="btn-outline" onclick="navTo('equipment','fleet')">View fleet →</button></div>
         <div class="card-body">
           <div class="mp-fleet-glance">
-            ${DATA.equipment.map(e=>`
+            ${DATA.equipment.map(e=>{ const st=equipmentServiceStatus(e); return `
               <div class="mp-fleet-chip" onclick="openEquipmentDetail('${e.id}')">
-                <div class="eq-status" style="background:${e.alertType==='red'?'var(--red-600)':e.alertType==='amber'?'var(--amber-600)':'var(--green-500)'};"></div>
+                <div class="eq-status" style="background:${st.type==='red'?'var(--red-600)':st.type==='amber'?'var(--amber-600)':'var(--green-500)'};"></div>
                 <span>${e.nickname}</span>
                 <span style="color:var(--text-muted);font-size:10px;">${e.hours}h</span>
               </div>
-            `).join('')}
+            `; }).join('')}
           </div>
         </div>
       </div>
@@ -6114,6 +6596,41 @@ function renderMechanicPortal(){
 /* ═══ RECORDS SECTION ═══ */
 function renderSprayLog(){
   return `
+  ${(()=>{
+    const g = gddStatus();
+    if(!g) return `<div class="card"><div class="card-head"><div class="card-title">Growing Degree Days</div></div><div class="card-body"><div style="font-size:12px;color:var(--text-muted);">Loading weather history…</div></div></div>`;
+    return `
+    <div class="card">
+      <div class="card-head"><div class="card-title">Growing Degree Days</div></div>
+      <div class="card-body">
+        ${g.pgr ? `
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <div style="font-size:12px;font-weight:700;">PGR reapplication — ${g.pgr.product}</div>
+            <div style="font-size:11px;font-weight:700;color:${g.pgr.due?'var(--red-600)':'var(--text-secondary)'};">${g.pgr.gdd} / ${g.pgr.target} GDD32</div>
+          </div>
+          <div class="proj-prog-bar" style="height:8px;"><div class="proj-prog-fill" style="width:${g.pgr.pct}%;${g.pgr.due?'background:var(--red-600);':''}"></div></div>
+          <div style="margin-top:6px;font-size:11px;color:var(--text-secondary);">
+            ${g.pgr.due
+              ? `Threshold reached — due for reapplication now.`
+              : g.pgr.dueDate
+                ? `On pace to hit ${g.pgr.target} GDD32 around ${MONTHS_SHORT[g.pgr.dueDate.getMonth()]} ${g.pgr.dueDate.getDate()} at the current accumulation rate.`
+                : `Accumulating since ${g.pgr.appliedDisp}.`}
+          </div>
+          ${g.pgr.truncated?`<div style="margin-top:4px;font-size:10px;color:var(--amber-600);">⚠ Weather history only reaches back ~92 days — this count may be missing GDD accrued between the application date and then.</div>`:''}
+        </div>
+        ` : `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">No PGR application logged yet — log one (e.g. Primo Maxx, with "growth regulator" in the notes) to start GDD32 reapplication tracking.</div>`}
+        ${g.gdd50 ? `
+        <div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:2px;">Rolling GDD50</div>
+          <div style="font-size:20px;font-weight:800;color:var(--green-700);">${g.gdd50.gdd}</div>
+          <div style="font-size:10px;color:var(--text-muted);">Accumulated over the last ${g.gdd50.days} days of weather history — a general turf growth/stress reference, not a substitute for a validated regional disease model.</div>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+    `;
+  })()}
   <div class="card">
     <div class="card-head"><div class="card-title">Spray Log</div><button class="btn-green" onclick="openSprayModal()">+ Log application</button></div>
     <div class="card-body" style="padding:0;">
@@ -6142,8 +6659,11 @@ function renderSprayLog(){
   `;
 }
 
-// Convert a stored display date ("Apr 10") to ISO (yyyy-mm-dd) for the picker.
-function sprayDispToIso(disp){
+// Convert a legacy display date ("Apr 10", no year) to ISO (yyyy-mm-dd) for
+// date pickers and date math — assumes the current year, same as every log
+// on this app did before isoDate started being stored alongside it. Shared
+// by spray/fert/speed logs instead of three near-identical copies.
+function legacyDispToIso(disp){
   if(!disp) return '';
   const parts = disp.trim().split(/\s+/);
   const mi = MONTHS_SHORT.indexOf(parts[0]);
@@ -6155,7 +6675,7 @@ function openSprayModal(idx){
   const editing = (idx !== undefined && idx !== null);
   const s = editing ? DATA.sprayLog[idx] : null;
   if(editing && !s) return;
-  const dateIso = editing ? sprayDispToIso(s.date) : new Date().toISOString().split('T')[0];
+  const dateIso = editing ? (s.isoDate || legacyDispToIso(s.date)) : new Date().toISOString().split('T')[0];
   const esc = v => (v==null?'':String(v)).replace(/"/g,'&quot;');
   const html = `
   <div class="modal-overlay open" id="spray-modal">
@@ -6185,15 +6705,18 @@ function saveSpray(){
   const idxVal = document.getElementById('sp-idx').value;
   const editing = idxVal !== '';
   const dateVal = document.getElementById('sp-date').value;
-  let date;
+  let date, isoDate;
   if(dateVal){
     const [y,mo,d] = dateVal.split('-').map(Number);
     date = MONTHS_SHORT[mo-1]+' '+d;
+    isoDate = dateVal; // the display string used to drop the year — keep it for date math (GDD, sorting)
   } else {
-    date = MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate();
+    const now = new Date();
+    date = MONTHS_SHORT[now.getMonth()]+' '+now.getDate();
+    isoDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   }
   const entry = {
-    date,
+    date, isoDate,
     area,
     product: document.getElementById('sp-prod').value,
     rate: document.getElementById('sp-rate').value,
@@ -6229,8 +6752,8 @@ function renderFertLog(){
       <table class="spray-table">
         <thead><tr><th>Date</th><th>Area</th><th>Product</th><th>Rate</th><th>Applied by</th><th>Notes</th><th></th></tr></thead>
         <tbody>
-          ${DATA.fertLog.map(f=>`
-            <tr><td>${f.date}</td><td>${f.area}</td><td><strong>${f.product}</strong></td><td>${f.rate}</td><td>${f.tech}</td><td>${f.notes}</td><td><div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div></td></tr>
+          ${DATA.fertLog.map((f,i)=>`
+            <tr><td>${f.date}</td><td>${f.area}</td><td><strong>${f.product}</strong></td><td>${f.rate}</td><td>${f.tech}</td><td>${f.notes}</td><td><div class="row-actions"><button class="row-icon-btn" onclick="openFertModal(${i})" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteFert(${i})" title="Delete">×</button></div></td></tr>
           `).join('')}
         </tbody>
       </table>
@@ -6238,22 +6761,28 @@ function renderFertLog(){
   </div>
   `;
 }
-function openFertModal(){
+function openFertModal(idx){
+  const editing = (idx !== undefined && idx !== null);
+  const f = editing ? DATA.fertLog[idx] : null;
+  if(editing && !f) return;
+  const dateIso = editing ? (f.isoDate || legacyDispToIso(f.date)) : new Date().toISOString().split('T')[0];
+  const esc = v => (v==null?'':String(v)).replace(/"/g,'&quot;');
   const html = `
   <div class="modal-overlay open" id="fert-modal">
     <div class="modal-box">
-      <div class="modal-title">+ Log fertilizer application</div>
+      <div class="modal-title">${editing?'✏ Edit fertilizer application':'+ Log fertilizer application'}</div>
+      <input type="hidden" id="ft-idx" value="${editing?idx:''}">
       <div class="modal-row">
-        <div class="modal-field"><label>Date</label><input type="date" id="ft-date" value="${new Date().toISOString().split('T')[0]}"></div>
-        <div class="modal-field"><label>Applied by</label><select id="ft-tech">${DATA.crew.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="modal-field"><label>Date</label><input type="date" id="ft-date" value="${dateIso}"></div>
+        <div class="modal-field"><label>Applied by</label><select id="ft-tech">${DATA.crew.map(c=>`<option${editing&&f.tech===c?' selected':''}>${c}</option>`).join('')}</select></div>
       </div>
-      <div class="modal-field"><label>Area</label><input type="text" id="ft-area" placeholder="e.g. All greens, Fairways 1-6"></div>
-      <div class="modal-field"><label>Product</label><input type="text" id="ft-prod" placeholder="e.g. Nature Safe 8-3-5"></div>
-      <div class="modal-field"><label>Rate</label><input type="text" id="ft-rate" placeholder="e.g. 0.5 lb N/1000"></div>
-      <div class="modal-field"><label>Notes</label><textarea id="ft-notes" style="height:60px;" placeholder="Weather, target, observations..."></textarea></div>
+      <div class="modal-field"><label>Area</label><input type="text" id="ft-area" value="${editing?esc(f.area):''}" placeholder="e.g. All greens, Fairways 1-6"></div>
+      <div class="modal-field"><label>Product</label><input type="text" id="ft-prod" value="${editing?esc(f.product):''}" placeholder="e.g. Nature Safe 8-3-5"></div>
+      <div class="modal-field"><label>Rate</label><input type="text" id="ft-rate" value="${editing?esc(f.rate):''}" placeholder="e.g. 0.5 lb N/1000"></div>
+      <div class="modal-field"><label>Notes</label><textarea id="ft-notes" style="height:60px;" placeholder="Weather, target, observations...">${editing?(f.notes||''):''}</textarea></div>
       <div class="modal-btns">
         <button class="btn-outline" onclick="closeModal('fert-modal');document.getElementById('modal-container').innerHTML='';">Cancel</button>
-        <button class="btn-green" onclick="saveFert()">Log application</button>
+        <button class="btn-green" onclick="saveFert()">${editing?'Save changes':'Log application'}</button>
       </div>
     </div>
   </div>`;
@@ -6263,27 +6792,46 @@ function openFertModal(){
 function saveFert(){
   const area = document.getElementById('ft-area').value.trim();
   if(!area) return showToast('Enter area', true);
+  const idxVal = document.getElementById('ft-idx').value;
+  const editing = idxVal !== '';
   const dateVal = document.getElementById('ft-date').value;
-  let date;
+  let date, isoDate;
   if(dateVal){
     const [y,mo,d] = dateVal.split('-').map(Number);
     date = MONTHS_SHORT[mo-1]+' '+d;
+    isoDate = dateVal;
   } else {
-    date = MONTHS_SHORT[new Date().getMonth()]+' '+new Date().getDate();
+    const now = new Date();
+    date = MONTHS_SHORT[now.getMonth()]+' '+now.getDate();
+    isoDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   }
-  DATA.fertLog.unshift({
-    date,
+  const entry = {
+    date, isoDate,
     area,
     product: document.getElementById('ft-prod').value,
     rate: document.getElementById('ft-rate').value,
     tech: document.getElementById('ft-tech').value,
     notes: document.getElementById('ft-notes').value
-  });
+  };
+  if(editing){
+    DATA.fertLog[parseInt(idxVal)] = entry;
+    showToast('Fertilizer entry updated');
+  } else {
+    DATA.fertLog.unshift(entry);
+    showToast('Fertilizer application logged');
+  }
   lsSave();
-  showToast('Fertilizer application logged');
   closeModal('fert-modal');
   document.getElementById('modal-container').innerHTML = '';
   renderMain();
+}
+function deleteFert(idx){
+  if(!DATA.fertLog[idx]) return;
+  if(!confirm('Delete this fertilizer log entry?')) return;
+  DATA.fertLog.splice(idx, 1);
+  lsSave();
+  renderMain();
+  showToast('Fertilizer entry deleted');
 }
 
 let selectedStimpHole = null;
@@ -6318,13 +6866,16 @@ function renderStimpHistory(){
     <div class="card-body">
       ${filteredSpeeds.length ? filteredSpeeds.map(s=>{
         const pct = ((s.val-7)/(13-7))*100;
+        // filteredSpeeds is a subset — look up the real index in DATA.greenSpeeds
+        // (same object references) so edit/delete hit the right entry.
+        const realIdx = DATA.greenSpeeds.indexOf(s);
         return '<div class="gs-log-row">'
           +'<div class="gs-log-date">'+s.date+'</div>'
           +'<div class="gs-log-val">'+s.val+'</div>'
           +'<div class="gs-log-hole">'+s.holes+'</div>'
           +'<div class="gs-log-bar-bg"><div class="gs-log-bar-fill" style="width:'+pct+'%;"></div></div>'
           +'<div class="gs-log-note">'+s.note+'</div>'
-          +'<div class="row-actions"><button class="row-icon-btn">✏</button><button class="row-icon-btn row-del">×</button></div>'
+          +'<div class="row-actions"><button class="row-icon-btn" onclick="openSpeedEntry('+realIdx+')" title="Edit">✏</button><button class="row-icon-btn row-del" onclick="deleteSpeed('+realIdx+')" title="Delete">×</button></div>'
           +'</div>';
       }).join('') : '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">No readings found for Hole '+filterHole+'</div>'}
     </div>
@@ -6596,7 +7147,7 @@ function renderSettingsAbout(){
         <div style="font-size:32px;font-weight:800;color:var(--green-700);letter-spacing:-0.8px;">FairwayOS</div>
         <div style="font-size:11px;color:var(--text-muted);letter-spacing:.1em;margin-top:4px;text-transform:uppercase;">Course Intelligence Platform</div>
         <div style="margin-top:24px;font-size:12px;color:var(--text-secondary);line-height:1.7;max-width:420px;margin-left:auto;margin-right:auto;">
-          AI-powered course intelligence ERP built exclusively for golf course superintendents. Combines superintendent-first design, AI agent, and direct irrigation control.
+          AI-powered course intelligence ERP built exclusively for golf course superintendents. Combines superintendent-first design, Blade (our AI agent), and direct irrigation control.
         </div>
         <div style="margin-top:18px;font-size:11px;color:var(--text-muted);">Version 6.0 · prototype</div>
       </div>
@@ -6618,6 +7169,7 @@ function initDate(){
 /* ═══ WEATHER — Open-Meteo ═══ */
 let weatherData = {};
 function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val||'—';}
+function hasZip(){ return /^\d{5}$/.test((DATA.zipCode||'').trim()); }
 const DEFAULT_GEO = {lat:42.2808, lon:-83.7430};
 // Turn the saved ZIP into coordinates so weather follows the course location.
 // Cached in DATA.weatherGeo and only re-looked-up when the ZIP changes.
@@ -6646,19 +7198,36 @@ async function resolveGeo(){
   return DEFAULT_GEO;
 }
 async function fetchWeather(){
+  if(!hasZip()){ weatherData = {}; return; } // no course zip on file — don't fetch or fake a location
   try{
     const geo = await resolveGeo();
-    const url='https://api.open-meteo.com/v1/forecast?latitude='+geo.lat+'&longitude='+geo.lon+'&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_gusts_10m,soil_temperature_0cm&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=7&forecast_days=7';
+    // past_days=92 (Open-Meteo's max) — the daily high/low history is what
+    // powers Growing Degree Day accumulation (GDD32 for PGR reapplication
+    // timing, GDD50 as a rolling disease-pressure reference).
+    const url='https://api.open-meteo.com/v1/forecast?latitude='+geo.lat+'&longitude='+geo.lon+'&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_gusts_10m,soil_temperature_0cm&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=92&forecast_days=7';
     const r=await fetch(url);const d=await r.json();
     weatherData=d;updateWeatherUI(d);
-    // Persist a compact snapshot so the AI always has recent weather, even before a fetch completes.
+    // Persist the full response + a compact AI snapshot so weather survives reloads.
+    DATA.weatherCache={ts:Date.now(), data:d};
     const sum=buildWeatherSummary(d);
-    if(sum){ DATA.lastWeather=sum; lsSave(); }
-  }catch(e){}
+    if(sum) DATA.lastWeather=sum;
+    lsSave();
+  }catch(e){ console.warn('Weather fetch failed:', e); }
+}
+function updateWeatherPlaceLabels(){
+  const place = (DATA.weatherGeo && DATA.weatherGeo.place)
+    || (DATA.courseCity ? DATA.courseCity + (DATA.courseState ? ', '+DATA.courseState : '') : 'your area');
+  ['tt-temp-place','tt-dew-place','tt-hum-place','tt-precip-place','tt-wind-place'].forEach(id=>setText(id,place));
 }
 function updateWeatherUI(d){
+  updateWeatherPlaceLabels();
+  drawForecastChart();
+  updateForecast5Day();
+  const briefEl = document.getElementById('today-brief-txt');
+  if(briefEl) briefEl.innerHTML = morningBriefText();
   const cur=d.current,daily=d.daily,hourly=d.hourly;
-  const today=new Date().toISOString().slice(0,10);
+  const now=new Date();
+  const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const ti=daily?.time?daily.time.indexOf(today):0;
   const todayIdx=ti>=0?ti:0;
   const temp=Math.round(cur.temperature_2m),dew=Math.round(cur.dew_point_2m);
@@ -6709,7 +7278,9 @@ function buildChart(id,vals,thresh,color){
 }
 function posTooltip(e,card){}
 
-const LS_KEY = 'fairwayos_v6_data';
+// Scoped per logged-in account so two different accounts on the same browser
+// never read/write each other's saved data.
+function lsKey(){ return 'fairwayos_v6_data_' + (currentUser && currentUser.id ? currentUser.id : 'anon'); }
 // Migrate moisture data from old flat format {hole,spots,ts,notes} → {hole,readings:[...]}
 function migrateData(){
   if(DATA.moisture && Array.isArray(DATA.moisture)){
@@ -6762,11 +7333,11 @@ function toggleMoistExpand(hole){
 }
 
 function lsSave(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(DATA)); }catch(e){}
+  try{ localStorage.setItem(lsKey(), JSON.stringify(DATA)); }catch(e){}
 }
 function lsLoad(){
   try{
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(lsKey());
     if(!raw) return;
     const saved = JSON.parse(raw);
     Object.assign(DATA, saved);
@@ -6776,6 +7347,11 @@ function lsLoad(){
 
 function init(){
   lsLoad();
+  // Show cached weather immediately (if less than 24h old); fetchWeather() refreshes it after.
+  if(hasZip() && DATA.weatherCache && DATA.weatherCache.data && DATA.weatherCache.data.current
+     && Date.now()-DATA.weatherCache.ts < 24*60*60*1000){
+    weatherData = DATA.weatherCache.data;
+  }
   initDate();
   renderSidebar();
   renderMain();
